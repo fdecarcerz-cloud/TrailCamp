@@ -1,397 +1,569 @@
 "use client";
 
 import { useState } from "react";
-
-export interface Expense {
-  id: number;
-  description: string;
-  amount: number;
-  paidBy: string;
-  includedMembers: string[];
-}
+import { supabase } from "@/lib/supabase";
+import { Expense, Participant } from "@/app/page";
 
 interface ExpensesSectionProps {
+  tripId: string;
   expenses: Expense[];
-  activeNames: string[];
-  currentUser: string;
-  onAddExpense: (expense: Expense) => void;
-  onUpdateExpense: (expense: Expense) => void;
-  onDeleteExpense: (expenseId: number) => void;
+  participants: Participant[];
+  onRefresh: () => void;
+}
+
+interface Transfer {
+  from: string;
+  to: string;
+  amount: number;
 }
 
 export default function ExpensesSection({
-  expenses,
-  activeNames,
-  currentUser,
-  onAddExpense,
-  onUpdateExpense,
-  onDeleteExpense,
+  tripId,
+  expenses = [],
+  participants = [],
+  onRefresh,
 }: ExpensesSectionProps) {
-  // Estado para saber si estamos creando uno nuevo o editando uno existente
-  const [editingExpenseId, setEditingExpenseId] = useState<number | null>(null);
+  // Formulario nuevo gasto
+  const [description, setDescription] = useState("");
+  const [amount, setAmount] = useState<number | "">("");
+  const [paidBy, setPaidBy] = useState("");
+  const [selectedParticipants, setSelectedParticipants] = useState<string[]>([]);
+  const [loading, setLoading] = useState(false);
 
-  // Formulario compartido
-  const [expenseDesc, setExpenseDesc] = useState("");
-  const [expenseAmount, setExpenseAmount] = useState("");
-  const [expensePayer, setExpensePayer] = useState(currentUser);
-  const [includedMembers, setIncludedMembers] = useState<string[]>(activeNames);
+  // Estado de edición
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editDescription, setEditDescription] = useState("");
+  const [editAmount, setEditAmount] = useState<number | "">("");
+  const [editPaidBy, setEditPaidBy] = useState("");
+  const [editSplitBetween, setEditSplitBetween] = useState<string[]>([]);
+  const [savingEdit, setSavingEdit] = useState(false);
 
-  const toggleIncludedMember = (name: string) => {
-    if (includedMembers.includes(name)) {
-      if (includedMembers.length === 1) return; // Evitar dejar vacío
-      setIncludedMembers(includedMembers.filter((m) => m !== name));
-    } else {
-      setIncludedMembers([...includedMembers, name]);
-    }
-  };
+  const safeExpenses = expenses.map((e) => ({
+    ...e,
+    split_between: Array.isArray(e.split_between) ? e.split_between : [],
+    amount: Number(e.amount) || 0,
+  }));
 
-  // Cargar datos en el formulario para editar
-  const handleStartEdit = (expense: Expense) => {
-    setEditingExpenseId(expense.id);
-    setExpenseDesc(expense.description);
-    setExpenseAmount(expense.amount.toString());
-    setExpensePayer(expense.paidBy);
-    // Filtrar para que solo estén miembros que sigan confirmados actualmente
-    const validMembers = expense.includedMembers.filter((m) => activeNames.includes(m));
-    setIncludedMembers(validMembers.length > 0 ? validMembers : activeNames);
-  };
+  const totalSpent = safeExpenses.reduce((sum, item) => sum + item.amount, 0);
 
-  const handleCancelEdit = () => {
-    setEditingExpenseId(null);
-    setExpenseDesc("");
-    setExpenseAmount("");
-    setExpensePayer(currentUser);
-    setIncludedMembers(activeNames);
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const parsedAmount = parseInt(expenseAmount, 10);
-    if (!expenseDesc.trim() || isNaN(parsedAmount) || parsedAmount <= 0) return;
-
-    if (editingExpenseId !== null) {
-      // Guardar edición
-      onUpdateExpense({
-        id: editingExpenseId,
-        description: expenseDesc,
-        amount: parsedAmount,
-        paidBy: expensePayer,
-        includedMembers: includedMembers,
-      });
-      handleCancelEdit();
-    } else {
-      // Crear nuevo gasto
-      onAddExpense({
-        id: Date.now(),
-        description: expenseDesc,
-        amount: parsedAmount,
-        paidBy: expensePayer,
-        includedMembers: includedMembers,
-      });
-      setExpenseDesc("");
-      setExpenseAmount("");
-      setIncludedMembers(activeNames);
-    }
-  };
-
-  // 1. Estadísticas individuales
-  const memberStats: { [name: string]: { paid: number; consumed: number; balance: number } } = {};
-  activeNames.forEach((name) => {
-    memberStats[name] = { paid: 0, consumed: 0, balance: 0 };
+  // Cálculo de balances netos
+  const balances: { [name: string]: number } = {};
+  participants.forEach((p) => {
+    balances[p.name] = 0;
   });
 
-  expenses.forEach((expense) => {
-    // Tomamos solo a los que estén activos actualmente
-    const currentIncluded = expense.includedMembers.filter((m) => activeNames.includes(m));
-    const splitCount = currentIncluded.length;
-    if (splitCount === 0) return;
-    const splitAmount = expense.amount / splitCount;
+  safeExpenses.forEach((exp) => {
+    const splitCount = exp.split_between.length || 1;
+    const splitAmount = exp.amount / splitCount;
 
-    if (memberStats[expense.paidBy]) {
-      memberStats[expense.paidBy].paid += expense.amount;
+    if (balances[exp.paid_by] !== undefined) {
+      balances[exp.paid_by] += exp.amount;
     }
 
-    currentIncluded.forEach((member) => {
-      if (memberStats[member]) {
-        memberStats[member].consumed += splitAmount;
+    exp.split_between.forEach((person) => {
+      if (balances[person] !== undefined) {
+        balances[person] -= splitAmount;
       }
     });
   });
 
-  activeNames.forEach((name) => {
-    memberStats[name].balance = memberStats[name].paid - memberStats[name].consumed;
-  });
+  // Cálculo de transferencias mínimas
+  const calculateTransfers = (): Transfer[] => {
+    const debtors: { name: string; amount: number }[] = [];
+    const creditors: { name: string; amount: number }[] = [];
 
-  // 2. Liquidación
-  const debtors: { name: string; amount: number }[] = [];
-  const creditors: { name: string; amount: number }[] = [];
+    Object.entries(balances).forEach(([name, balance]) => {
+      const rounded = Math.round(balance);
+      if (rounded < -1) {
+        debtors.push({ name, amount: -rounded });
+      } else if (rounded > 1) {
+        creditors.push({ name, amount: rounded });
+      }
+    });
 
-  Object.entries(memberStats).forEach(([name, data]) => {
-    const rounded = Math.round(data.balance);
-    if (rounded < 0) debtors.push({ name, amount: -rounded });
-    else if (rounded > 0) creditors.push({ name, amount: rounded });
-  });
+    const transfers: Transfer[] = [];
+    let d = 0;
+    let c = 0;
 
-  const settlements: { from: string; to: string; amount: number }[] = [];
-  let d = 0;
-  let c = 0;
+    while (d < debtors.length && c < creditors.length) {
+      const debtor = debtors[d];
+      const creditor = creditors[c];
+      const settledAmount = Math.min(debtor.amount, creditor.amount);
 
-  while (d < debtors.length && c < creditors.length) {
-    const debtor = debtors[d];
-    const creditor = creditors[c];
-    const settledAmount = Math.min(debtor.amount, creditor.amount);
-
-    if (settledAmount > 0) {
-      settlements.push({
+      transfers.push({
         from: debtor.name,
         to: creditor.name,
         amount: settledAmount,
       });
+
+      debtor.amount -= settledAmount;
+      creditor.amount -= settledAmount;
+
+      if (debtor.amount <= 0) d++;
+      if (creditor.amount <= 0) c++;
     }
 
-    debtor.amount -= settledAmount;
-    creditor.amount -= settledAmount;
+    return transfers;
+  };
 
-    if (debtor.amount === 0) d++;
-    if (creditor.amount === 0) c++;
-  }
+  const transfers = calculateTransfers();
 
-  const totalTripCost = expenses.reduce((acc, curr) => acc + curr.amount, 0);
+  const handleToggleSplitUser = (name: string, isEditingMode = false) => {
+    if (isEditingMode) {
+      if (editSplitBetween.includes(name)) {
+        setEditSplitBetween(editSplitBetween.filter((p) => p !== name));
+      } else {
+        setEditSplitBetween([...editSplitBetween, name]);
+      }
+    } else {
+      if (selectedParticipants.includes(name)) {
+        setSelectedParticipants(selectedParticipants.filter((p) => p !== name));
+      } else {
+        setSelectedParticipants([...selectedParticipants, name]);
+      }
+    }
+  };
+
+  const handleSelectAll = (isEditingMode = false) => {
+    if (isEditingMode) {
+      if (editSplitBetween.length === participants.length) {
+        setEditSplitBetween([]);
+      } else {
+        setEditSplitBetween(participants.map((p) => p.name));
+      }
+    } else {
+      if (selectedParticipants.length === participants.length) {
+        setSelectedParticipants([]);
+      } else {
+        setSelectedParticipants(participants.map((p) => p.name));
+      }
+    }
+  };
+
+  const handleAddExpense = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!description.trim() || !amount || !paidBy) {
+      alert("Completa la descripción, el monto y quién pagó.");
+      return;
+    }
+
+    const splitList =
+      selectedParticipants.length > 0
+        ? selectedParticipants
+        : participants.map((p) => p.name);
+
+    setLoading(true);
+    try {
+      const { error } = await supabase.from("expenses").insert([
+        {
+          trip_id: tripId,
+          description,
+          amount: Number(amount),
+          paid_by: paidBy,
+          split_between: splitList,
+        },
+      ]);
+
+      if (error) throw error;
+
+      setDescription("");
+      setAmount("");
+      setPaidBy("");
+      setSelectedParticipants([]);
+      onRefresh();
+    } catch (err: any) {
+      alert("Error guardando gasto: " + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const startEditing = (exp: Expense) => {
+    setEditingId(exp.id);
+    setEditDescription(exp.description);
+    setEditAmount(exp.amount);
+    setEditPaidBy(exp.paid_by);
+    setEditSplitBetween(Array.isArray(exp.split_between) ? exp.split_between : []);
+  };
+
+  const cancelEditing = () => {
+    setEditingId(null);
+  };
+
+  const handleUpdateExpense = async (id: string) => {
+    if (!editDescription.trim() || !editAmount || !editPaidBy) {
+      alert("Completa todos los campos obligatorios.");
+      return;
+    }
+
+    const splitList =
+      editSplitBetween.length > 0
+        ? editSplitBetween
+        : participants.map((p) => p.name);
+
+    setSavingEdit(true);
+    try {
+      const { error } = await supabase
+        .from("expenses")
+        .update({
+          description: editDescription,
+          amount: Number(editAmount),
+          paid_by: editPaidBy,
+          split_between: splitList,
+        })
+        .eq("id", id);
+
+      if (error) throw error;
+
+      setEditingId(null);
+      onRefresh();
+    } catch (err: any) {
+      alert("Error actualizando gasto: " + err.message);
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  const handleDeleteExpense = async (id: string) => {
+    if (!confirm("¿Deseas eliminar este gasto?")) return;
+    try {
+      const { error } = await supabase.from("expenses").delete().eq("id", id);
+      if (error) throw error;
+      onRefresh();
+    } catch (err: any) {
+      console.error("Error eliminando gasto:", err);
+    }
+  };
 
   return (
-    <section className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-5">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-        <div>
-          <h2 className="text-lg font-bold text-white">División de Gastos y Cuentas</h2>
-          <p className="text-xs text-slate-400">
-            {editingExpenseId ? "Modificando un gasto existente" : "Cálculo automático de quién le debe a quién"}
-          </p>
-        </div>
-        <div className="bg-slate-950/80 px-3 py-1.5 rounded border border-slate-800 text-right">
-          <span className="text-[10px] text-slate-400 block uppercase">Total Acumulado</span>
-          <span className="text-sm font-bold text-emerald-400">${totalTripCost.toLocaleString("es-CL")}</span>
-        </div>
-      </div>
-
-      {/* Formulario (Crear o Editar) */}
-      <form
-        onSubmit={handleSubmit}
-        className={`space-y-3 p-4 rounded-xl border transition-colors ${
-          editingExpenseId
-            ? "bg-slate-950 border-emerald-500/40"
-            : "bg-slate-950/40 border-slate-800"
-        }`}
-      >
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-semibold text-slate-300">
-            {editingExpenseId ? "✏️ Editando gasto seleccionado" : "+ Registrar nuevo gasto"}
-          </span>
-          {editingExpenseId && (
-            <button
-              type="button"
-              onClick={handleCancelEdit}
-              className="text-xs text-slate-400 hover:text-rose-400 transition-colors"
-            >
-              ✕ Cancelar edición
-            </button>
-          )}
+    <div className="space-y-6">
+      {/* Resumen Total y Liquidaciones */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="bg-slate-950/60 border border-slate-800 p-4 rounded-xl">
+          <span className="text-xs text-slate-400">Total acumulado del viaje</span>
+          <h3 className="text-xl font-black text-emerald-400 font-mono mt-1">
+            ${totalSpent.toLocaleString("es-CL")}
+          </h3>
+          <span className="text-[10px] text-slate-500">{safeExpenses.length} gastos ingresados</span>
         </div>
 
-        <div className="flex flex-col sm:flex-row gap-2">
-          <input
-            type="text"
-            placeholder="Descripción (ej. Asado, Cervezas...)"
-            value={expenseDesc}
-            onChange={(e) => setExpenseDesc(e.target.value)}
-            className="flex-1 bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500"
-          />
-          <input
-            type="number"
-            placeholder="Monto ($)"
-            value={expenseAmount}
-            onChange={(e) => setExpenseAmount(e.target.value)}
-            className="w-full sm:w-32 bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500"
-          />
-          <select
-            value={expensePayer}
-            onChange={(e) => setExpensePayer(e.target.value)}
-            className="bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-300 focus:outline-none focus:border-emerald-500"
-          >
-            {activeNames.map((name) => (
-              <option key={name} value={name}>
-                Pagó: {name}
-              </option>
-            ))}
-          </select>
-          <button
-            type="submit"
-            className="bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-sm px-4 py-2 rounded-lg transition-colors whitespace-nowrap"
-          >
-            {editingExpenseId ? "Guardar Cambios" : "+ Gasto"}
-          </button>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2 pt-1">
-          <span className="text-xs text-slate-400">Dividir entre:</span>
-          {activeNames.map((name) => {
-            const isIncluded = includedMembers.includes(name);
-            return (
-              <button
-                key={name}
-                type="button"
-                onClick={() => toggleIncludedMember(name)}
-                className={`text-xs px-2.5 py-1 rounded-md border transition-all ${
-                  isIncluded
-                    ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40 font-medium"
-                    : "bg-slate-900 text-slate-500 border-slate-800 hover:border-slate-700"
-                }`}
-              >
-                {isIncluded ? "✓ " : "+ "} {name}
-              </button>
-            );
-          })}
-        </div>
-      </form>
-
-      {/* Resumen por integrante */}
-      <div>
-        <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-3">
-          Resumen por integrante (Aporte vs Gasto personal)
-        </h3>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          {activeNames.map((name) => {
-            const stats = memberStats[name] || { paid: 0, consumed: 0, balance: 0 };
-            const netRounded = Math.round(stats.balance);
-
-            return (
-              <div key={name} className="bg-slate-950/60 border border-slate-800 rounded-lg p-3 space-y-2">
-                <div className="flex justify-between items-baseline border-b border-slate-800/60 pb-1.5">
-                  <span className="font-semibold text-sm text-slate-200">{name}</span>
-                  <span
-                    className={`text-[11px] font-bold ${
-                      netRounded > 0 ? "text-emerald-400" : netRounded < 0 ? "text-rose-400" : "text-slate-400"
-                    }`}
-                  >
-                    {netRounded > 0 ? `+${netRounded.toLocaleString("es-CL")}` : `${netRounded.toLocaleString("es-CL")}`}
+        <div className="md:col-span-2 bg-slate-950/60 border border-slate-800 p-4 rounded-xl">
+          <span className="text-xs font-semibold text-white block mb-2">Liquidación de cuentas</span>
+          {transfers.length === 0 ? (
+            <p className="text-[11px] text-slate-500 italic">
+              {participants.length === 0
+                ? "Agrega participantes en 'Equipo' para calcular liquidaciones."
+                : "Cuentas equilibradas. Nadie debe dinero a nadie."}
+            </p>
+          ) : (
+            <div className="space-y-1.5">
+              {transfers.map((t, idx) => (
+                <div
+                  key={idx}
+                  className="text-xs flex items-center justify-between bg-slate-900/80 border border-slate-800 px-3 py-1.5 rounded-lg"
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="text-rose-400 font-medium">{t.from}</span>
+                    <span className="text-slate-500">le transfiere a</span>
+                    <span className="text-emerald-400 font-medium">{t.to}</span>
+                  </div>
+                  <span className="font-mono font-bold text-white">
+                    ${t.amount.toLocaleString("es-CL")}
                   </span>
                 </div>
-
-                <div className="grid grid-cols-2 gap-2 text-xs">
-                  <div>
-                    <span className="text-slate-500 block text-[10px] uppercase">Pagó</span>
-                    <span className="font-medium text-white">${stats.paid.toLocaleString("es-CL")}</span>
-                  </div>
-                  <div>
-                    <span className="text-slate-500 block text-[10px] uppercase">Su parte</span>
-                    <span className="font-medium text-slate-300">
-                      ${Math.round(stats.consumed).toLocaleString("es-CL")}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Liquidación */}
-      <div className="bg-slate-950/70 border border-slate-800 rounded-lg p-4">
-        <h3 className="text-xs font-semibold uppercase tracking-wider text-emerald-400 mb-3">
-          🤝 Liquidación de pagos (Cómo quedar a mano)
-        </h3>
-        {settlements.length === 0 ? (
-          <p className="text-xs text-slate-400 italic">No hay deudas pendientes entre los participantes.</p>
-        ) : (
-          <div className="space-y-2">
-            {settlements.map((s, idx) => {
-              const isUserPaying = s.from === currentUser;
-              const isUserReceiving = s.to === currentUser;
+      {/* Balances individuales */}
+      {participants.length > 0 && (
+        <div className="bg-slate-900/30 border border-slate-800/60 p-3.5 rounded-xl">
+          <span className="text-xs text-slate-400 font-medium block mb-2">Balance individual:</span>
+          <div className="flex flex-wrap gap-2">
+            {participants.map((p) => {
+              const bal = Math.round(balances[p.name] || 0);
+              const isPositive = bal > 0;
+              const isZero = bal === 0;
 
               return (
                 <div
-                  key={idx}
-                  className={`flex items-center justify-between p-2.5 rounded-md border text-xs ${
-                    isUserReceiving
-                      ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-200"
-                      : isUserPaying
-                      ? "bg-rose-500/10 border-rose-500/30 text-rose-200"
-                      : "bg-slate-900 border-slate-800 text-slate-300"
-                  }`}
+                  key={p.id}
+                  className="bg-slate-900 border border-slate-800 px-2.5 py-1 rounded-lg text-xs flex items-center gap-2"
                 >
-                  <span>
-                    {isUserPaying ? (
-                      <>
-                        <strong>Debes transferirle</strong> a <span className="font-bold text-white">{s.to}</span>
-                      </>
-                    ) : isUserReceiving ? (
-                      <>
-                        <span className="font-bold text-white">{s.from}</span> <strong>te debe transferir a ti</strong>
-                      </>
-                    ) : (
-                      <>
-                        <span className="font-semibold text-white">{s.from}</span> debe pagarle a{" "}
-                        <span className="font-semibold text-white">{s.to}</span>
-                      </>
-                    )}
+                  <span className="text-slate-300">{p.name}</span>
+                  <span
+                    className={`font-mono font-semibold ${
+                      isZero
+                        ? "text-slate-500"
+                        : isPositive
+                        ? "text-emerald-400"
+                        : "text-rose-400"
+                    }`}
+                  >
+                    {isPositive ? `+$${bal.toLocaleString("es-CL")}` : `-$${Math.abs(bal).toLocaleString("es-CL")}`}
                   </span>
-                  <span className="font-extrabold text-sm ml-2">${s.amount.toLocaleString("es-CL")}</span>
                 </div>
               );
             })}
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
-      {/* Detalle de compras con botones de editar y borrar */}
-      <div className="space-y-2 pt-1">
-        <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-          Detalle de compras registradas
-        </h3>
-        {expenses.length === 0 ? (
-          <p className="text-xs text-slate-500 italic py-2">No hay gastos anotados en esta salida.</p>
-        ) : (
-          expenses.map((expense) => (
-            <div
-              key={expense.id}
-              className={`flex items-center justify-between p-2.5 rounded-lg border text-xs transition-colors ${
-                editingExpenseId === expense.id
-                  ? "bg-emerald-950/20 border-emerald-500/40"
-                  : "bg-slate-950/40 border-slate-800/80"
-              }`}
+      {/* Formulario nuevo gasto */}
+      <form
+        onSubmit={handleAddExpense}
+        className="bg-slate-950/60 border border-slate-800 p-4 rounded-xl space-y-4 text-xs"
+      >
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div>
+            <label className="text-slate-400 block mb-1">Descripción</label>
+            <input
+              type="text"
+              required
+              placeholder="Ej: Bencina, Supermercado"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
+            />
+          </div>
+
+          <div>
+            <label className="text-slate-400 block mb-1">Monto ($)</label>
+            <input
+              type="number"
+              required
+              min={1}
+              placeholder="Ej: 30000"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value === "" ? "" : Number(e.target.value))}
+              className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
+            />
+          </div>
+
+          <div>
+            <label className="text-slate-400 block mb-1">¿Quién pagó?</label>
+            <select
+              required
+              value={paidBy}
+              onChange={(e) => setPaidBy(e.target.value)}
+              className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
             >
-              <div>
-                <span className="font-medium text-slate-200">{expense.description}</span>
-                <span className="text-slate-400 ml-1.5">({expense.paidBy})</span>
-                <div className="text-[11px] text-slate-500 mt-0.5">
-                  Dividido entre: {expense.includedMembers.join(", ")}
+              <option value="">Seleccionar pagador...</option>
+              {participants.map((p) => (
+                <option key={p.id} value={p.name}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <label className="text-slate-400">Dividir entre (por defecto todos):</label>
+            {participants.length > 0 && (
+              <button
+                type="button"
+                onClick={() => handleSelectAll(false)}
+                className="text-[10px] text-emerald-400 hover:text-emerald-300 underline"
+              >
+                {selectedParticipants.length === participants.length
+                  ? "Deseleccionar todos"
+                  : "Seleccionar todos"}
+              </button>
+            )}
+          </div>
+
+          <div className="flex flex-wrap gap-1.5">
+            {participants.length === 0 ? (
+              <span className="text-slate-600 text-[11px] italic">
+                Agrega integrantes en "Equipo" para poder dividir gastos.
+              </span>
+            ) : (
+              participants.map((p) => {
+                const isSelected = selectedParticipants.includes(p.name);
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => handleToggleSplitUser(p.name, false)}
+                    className={`text-[11px] px-2.5 py-1 rounded-lg border transition-colors ${
+                      isSelected
+                        ? "bg-emerald-900/60 border-emerald-600 text-emerald-300 font-medium"
+                        : "bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-700"
+                    }`}
+                  >
+                    {isSelected ? `✓ ${p.name}` : p.name}
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </div>
+
+        <button
+          type="submit"
+          disabled={loading || participants.length === 0}
+          className="bg-emerald-600 hover:bg-emerald-500 text-white font-semibold py-2 px-4 rounded-lg transition-colors disabled:opacity-50"
+        >
+          {loading ? "Guardando..." : "+ Registrar Gasto"}
+        </button>
+      </form>
+
+      {/* Historial de gastos con edición */}
+      <div className="space-y-2">
+        {safeExpenses.length === 0 ? (
+          <div className="text-center text-xs text-slate-500 py-8 border border-dashed border-slate-800 rounded-xl">
+            Aún no hay gastos registrados en este viaje.
+          </div>
+        ) : (
+          safeExpenses.map((exp) => {
+            const splitCount = exp.split_between.length || 1;
+            const perPerson = Math.round(exp.amount / splitCount);
+            const isEditing = editingId === exp.id;
+
+            if (isEditing) {
+              return (
+                <div
+                  key={exp.id}
+                  className="bg-slate-900/90 border border-emerald-500/50 p-4 rounded-xl space-y-3 text-xs"
+                >
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <div>
+                      <label className="text-slate-400 block mb-0.5">Descripción</label>
+                      <input
+                        type="text"
+                        value={editDescription}
+                        onChange={(e) => setEditDescription(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-700 rounded-md px-2 py-1 text-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-slate-400 block mb-0.5">Monto ($)</label>
+                      <input
+                        type="number"
+                        min={1}
+                        value={editAmount}
+                        onChange={(e) =>
+                          setEditAmount(e.target.value === "" ? "" : Number(e.target.value))
+                        }
+                        className="w-full bg-slate-950 border border-slate-700 rounded-md px-2 py-1 text-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-slate-400 block mb-0.5">¿Quién pagó?</label>
+                      <select
+                        value={editPaidBy}
+                        onChange={(e) => setEditPaidBy(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-700 rounded-md px-2 py-1 text-white"
+                      >
+                        {participants.map((p) => (
+                          <option key={p.id} value={p.name}>
+                            {p.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-slate-400 text-[11px]">Dividir entre:</label>
+                      <button
+                        type="button"
+                        onClick={() => handleSelectAll(true)}
+                        className="text-[10px] text-emerald-400 underline"
+                      >
+                        {editSplitBetween.length === participants.length
+                          ? "Deseleccionar todos"
+                          : "Seleccionar todos"}
+                      </button>
+                    </div>
+                    <div className="flex flex-wrap gap-1">
+                      {participants.map((p) => {
+                        const isSelected = editSplitBetween.includes(p.name);
+                        return (
+                          <button
+                            key={p.id}
+                            type="button"
+                            onClick={() => handleToggleSplitUser(p.name, true)}
+                            className={`text-[10px] px-2 py-0.5 rounded border transition-colors ${
+                              isSelected
+                                ? "bg-emerald-900/60 border-emerald-600 text-emerald-300 font-medium"
+                                : "bg-slate-950 border-slate-800 text-slate-400"
+                            }`}
+                          >
+                            {isSelected ? `✓ ${p.name}` : p.name}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end gap-2 pt-2 border-t border-slate-800">
+                    <button
+                      type="button"
+                      onClick={cancelEditing}
+                      className="px-3 py-1 rounded bg-slate-800 text-slate-300 hover:bg-slate-700"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="button"
+                      disabled={savingEdit}
+                      onClick={() => handleUpdateExpense(exp.id)}
+                      className="px-3 py-1 rounded bg-emerald-600 text-white font-medium hover:bg-emerald-500"
+                    >
+                      {savingEdit ? "Guardando..." : "Guardar Cambios"}
+                    </button>
+                  </div>
+                </div>
+              );
+            }
+
+            return (
+              <div
+                key={exp.id}
+                className="bg-slate-900/60 border border-slate-800 p-3.5 rounded-xl flex items-center justify-between"
+              >
+                <div>
+                  <div className="text-xs font-semibold text-white flex items-center gap-2">
+                    {exp.description}
+                    <span className="text-[10px] bg-slate-800 text-slate-300 px-1.5 py-0.5 rounded border border-slate-700">
+                      Pagó {exp.paid_by}
+                    </span>
+                  </div>
+                  <div className="text-[11px] text-slate-400 mt-1">
+                    Dividido entre {splitCount} personas (~${perPerson.toLocaleString("es-CL")} c/u)
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <span className="font-mono text-sm font-bold text-emerald-400">
+                    ${exp.amount.toLocaleString("es-CL")}
+                  </span>
+                  <button
+                    onClick={() => startEditing(exp)}
+                    className="text-slate-400 hover:text-slate-200 text-xs px-1"
+                    title="Editar gasto"
+                  >
+                    ✎
+                  </button>
+                  <button
+                    onClick={() => handleDeleteExpense(exp.id)}
+                    className="text-slate-500 hover:text-rose-400 text-xs px-1"
+                    title="Eliminar gasto"
+                  >
+                    ✕
+                  </button>
                 </div>
               </div>
-
-              <div className="flex items-center gap-3">
-                <span className="font-semibold text-white">${expense.amount.toLocaleString("es-CL")}</span>
-
-                <button
-                  type="button"
-                  onClick={() => handleStartEdit(expense)}
-                  title="Editar este gasto"
-                  className="text-slate-400 hover:text-emerald-400 p-1 text-xs transition-colors"
-                >
-                  ✏️
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => onDeleteExpense(expense.id)}
-                  title="Eliminar este gasto"
-                  className="text-slate-500 hover:text-rose-400 p-1 text-xs transition-colors"
-                >
-                  🗑️
-                </button>
-              </div>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
-    </section>
+    </div>
   );
 }

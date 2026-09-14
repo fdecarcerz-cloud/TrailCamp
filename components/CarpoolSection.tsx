@@ -1,234 +1,369 @@
 "use client";
 
 import { useState } from "react";
-
-export interface Carpool {
-  id: number;
-  driver: string;
-  car: string;
-  totalSeats: number;
-  passengers: string[];
-  meetingPoint: string;
-}
+import { supabase } from "@/lib/supabase";
+import { Carpool, Participant } from "@/app/page";
 
 interface CarpoolSectionProps {
+  tripId: string;
   carpools: Carpool[];
-  currentUser: string;
-  onJoinCar: (carId: number) => void;
-  onLeaveCar: (carId: number) => void;
-  onUpdateSeats: (carId: number, delta: number) => void;
-  onAddCar: (car: Carpool) => void;
-  onDeleteCar: (carId: number) => void;
+  participants: Participant[];
+  onRefresh: () => void;
 }
 
 export default function CarpoolSection({
-  carpools,
-  currentUser,
-  onJoinCar,
-  onLeaveCar,
-  onUpdateSeats,
-  onAddCar,
-  onDeleteCar,
+  tripId,
+  carpools = [],
+  participants = [],
+  onRefresh,
 }: CarpoolSectionProps) {
-  const [showAddCar, setShowAddCar] = useState(false);
-  const [carModel, setCarModel] = useState("");
-  const [seats, setSeats] = useState(4);
-  const [meetingPoint, setMeetingPoint] = useState("");
+  // Formulario de creación
+  const [driverName, setDriverName] = useState("");
+  const [departureLocation, setDepartureLocation] = useState("");
+  const [departureTime, setDepartureTime] = useState("");
+  const [seatsAvailable, setSeatsAvailable] = useState<number>(3);
+  const [loading, setLoading] = useState(false);
 
-  const isDriverAnywhere = carpools.some((car) => car.driver === currentUser);
+  // Estado de edición
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editDriverName, setEditDriverName] = useState<string>("");
+  const [editDepartureLocation, setEditDepartureLocation] = useState<string>("");
+  const [editDepartureTime, setEditDepartureTime] = useState<string>("");
+  const [editSeatsAvailable, setEditSeatsAvailable] = useState<number>(3);
+  const [savingEdit, setSavingEdit] = useState(false);
 
-  const handleCreateCar = (e: React.FormEvent) => {
+  const handleAddCarpool = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!carModel.trim() || !meetingPoint.trim()) return;
+    if (!driverName.trim()) return;
 
-    onAddCar({
-      id: Date.now(),
-      driver: currentUser,
-      car: carModel,
-      totalSeats: Math.max(2, seats),
-      passengers: [],
-      meetingPoint,
-    });
+    setLoading(true);
+    try {
+      const { error } = await supabase.from("carpools").insert([
+        {
+          trip_id: tripId,
+          driver_name: driverName.trim(),
+          departure_location: departureLocation.trim(),
+          departure_time: departureTime.trim(),
+          seats_available: Number(seatsAvailable) || 3,
+          passengers: [],
+        },
+      ]);
 
-    setCarModel("");
-    setMeetingPoint("");
-    setSeats(4);
-    setShowAddCar(false);
+      if (error) throw error;
+
+      setDriverName("");
+      setDepartureLocation("");
+      setDepartureTime("");
+      setSeatsAvailable(3);
+      onRefresh();
+    } catch (err: any) {
+      alert("Error agregando auto: " + (err?.message || "Error desconocido"));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const startEditing = (car: Carpool) => {
+    setEditingId(car.id);
+    setEditDriverName(car.driver_name ?? "");
+    setEditDepartureLocation(car.departure_location ?? "");
+    setEditDepartureTime(car.departure_time ?? "");
+    setEditSeatsAvailable(Number(car.seats_available) || 3);
+  };
+
+  const cancelEditing = () => {
+    setEditingId(null);
+  };
+
+  const handleUpdateCarpool = async (carId: string) => {
+    setSavingEdit(true);
+    try {
+      const { error } = await supabase
+        .from("carpools")
+        .update({
+          driver_name: editDriverName ?? "",
+          departure_location: editDepartureLocation ?? "",
+          departure_time: editDepartureTime ?? "",
+          seats_available: Number(editSeatsAvailable) || 3,
+        })
+        .eq("id", carId);
+
+      if (error) throw error;
+
+      setEditingId(null);
+      onRefresh();
+    } catch (err: any) {
+      alert("Error actualizando auto: " + (err?.message || "Error desconocido"));
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  const handleTogglePassenger = async (carpool: Carpool, passengerName: string) => {
+    const currentPassengers = Array.isArray(carpool.passengers) ? carpool.passengers : [];
+    const isAlreadyPassenger = currentPassengers.includes(passengerName);
+    let updatedPassengers: string[];
+
+    if (isAlreadyPassenger) {
+      updatedPassengers = currentPassengers.filter((p) => p !== passengerName);
+    } else {
+      if (currentPassengers.length >= carpool.seats_available) {
+        alert("Este vehículo ya completó sus cupos disponibles.");
+        return;
+      }
+      updatedPassengers = [...currentPassengers, passengerName];
+    }
+
+    try {
+      const { error } = await supabase
+        .from("carpools")
+        .update({ passengers: updatedPassengers })
+        .eq("id", carpool.id);
+
+      if (error) throw error;
+      onRefresh();
+    } catch (err: any) {
+      alert("Error actualizando cupos: " + (err?.message || "Error desconocido"));
+    }
+  };
+
+  const handleDeleteCarpool = async (id: string) => {
+    if (!confirm("¿Deseas eliminar este vehículo?")) return;
+    try {
+      const { error } = await supabase.from("carpools").delete().eq("id", id);
+      if (error) throw error;
+      onRefresh();
+    } catch (err: any) {
+      console.error("Error eliminando vehículo:", err);
+    }
   };
 
   return (
-    <section className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4">
-      <div className="flex justify-between items-center">
+    <div className="space-y-6">
+      <form
+        onSubmit={handleAddCarpool}
+        className="bg-slate-950/60 border border-slate-800 p-4 rounded-xl grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 items-end text-xs"
+      >
         <div>
-          <h2 className="text-lg font-bold text-white">Ruta y Carpooling</h2>
-          <p className="text-xs text-slate-400">Coordinación de vehículos y asientos disponibles</p>
+          <label className="text-slate-400 block mb-1">Conductor / Auto</label>
+          <input
+            type="text"
+            required
+            placeholder="Ej: Camioneta Fernando"
+            value={driverName ?? ""}
+            onChange={(e) => setDriverName(e.target.value)}
+            className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
+          />
         </div>
 
-        {!isDriverAnywhere ? (
-          <button
-            onClick={() => setShowAddCar(!showAddCar)}
-            className="text-xs bg-emerald-600 hover:bg-emerald-500 text-white font-medium px-3 py-1.5 rounded-lg transition-colors"
-          >
-            {showAddCar ? "✕ Cancelar" : "+ Ofrecer mi auto"}
-          </button>
-        ) : (
-          <span className="text-xs bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2.5 py-1 rounded font-medium">
-            🚗 Conductor registrado
-          </span>
-        )}
-      </div>
+        <div>
+          <label className="text-slate-400 block mb-1">Punto de salida</label>
+          <input
+            type="text"
+            placeholder="Ej: Metro Escuela Militar"
+            value={departureLocation ?? ""}
+            onChange={(e) => setDepartureLocation(e.target.value)}
+            className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
+          />
+        </div>
 
-      {/* Formulario para registrar un auto */}
-      {showAddCar && (
-        <form onSubmit={handleCreateCar} className="bg-slate-950/80 border border-slate-800 rounded-lg p-4 space-y-3">
-          <h3 className="text-xs font-semibold text-slate-300 uppercase">Detalles de tu vehículo</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-            <input
-              type="text"
-              placeholder="Modelo (ej. Toyota RAV4)"
-              value={carModel}
-              onChange={(e) => setCarModel(e.target.value)}
-              className="bg-slate-900 border border-slate-800 rounded-md px-3 py-1.5 text-xs text-white focus:outline-none focus:border-emerald-500"
-            />
-            <input
-              type="number"
-              min="2"
-              max="12"
-              placeholder="Total asientos con chofer"
-              value={seats}
-              onChange={(e) => setSeats(parseInt(e.target.value, 10) || 4)}
-              className="bg-slate-900 border border-slate-800 rounded-md px-3 py-1.5 text-xs text-white focus:outline-none focus:border-emerald-500"
-            />
-            <input
-              type="text"
-              placeholder="Punto de encuentro y hora"
-              value={meetingPoint}
-              onChange={(e) => setMeetingPoint(e.target.value)}
-              className="bg-slate-900 border border-slate-800 rounded-md px-3 py-1.5 text-xs text-white focus:outline-none focus:border-emerald-500"
-            />
-          </div>
-          <button
-            type="submit"
-            className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold px-4 py-2 rounded-md transition-colors"
-          >
-            Publicar Vehículo
-          </button>
-        </form>
-      )}
+        <div>
+          <label className="text-slate-400 block mb-1">Hora de salida</label>
+          <input
+            type="text"
+            placeholder="Ej: 07:30 AM"
+            value={departureTime ?? ""}
+            onChange={(e) => setDepartureTime(e.target.value)}
+            className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
+          />
+        </div>
 
-      {/* Grid de vehículos */}
+        <div>
+          <label className="text-slate-400 block mb-1">Cupos disponibles</label>
+          <input
+            type="number"
+            min={1}
+            max={9}
+            value={seatsAvailable ?? 3}
+            onChange={(e) => setSeatsAvailable(Number(e.target.value))}
+            className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
+          />
+        </div>
+
+        <button
+          type="submit"
+          disabled={loading}
+          className="bg-emerald-600 hover:bg-emerald-500 text-white font-semibold py-2 px-4 rounded-lg transition-colors disabled:opacity-50 h-[34px]"
+        >
+          {loading ? "Guardando..." : "+ Publicar auto"}
+        </button>
+      </form>
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {carpools.length === 0 ? (
-          <p className="text-xs text-slate-500 italic col-span-2 py-3">No hay autos ofrecidos aún para esta expedición.</p>
+          <div className="col-span-full text-center text-xs text-slate-500 py-8 border border-dashed border-slate-800 rounded-xl">
+            No hay vehículos coordinados. Registra el primero arriba.
+          </div>
         ) : (
           carpools.map((car) => {
-            const availableSeats = car.totalSeats - (1 + car.passengers.length);
-            const isUserInThisCar = car.passengers.includes(currentUser);
-            const isUserDriver = car.driver === currentUser;
+            const passengers = Array.isArray(car.passengers) ? car.passengers : [];
+            const isFull = passengers.length >= car.seats_available;
+            const isEditing = editingId === car.id;
 
             return (
               <div
                 key={car.id}
-                className="bg-slate-950/60 border border-slate-800 rounded-lg p-4 flex flex-col justify-between space-y-3"
+                className="bg-slate-900/60 border border-slate-800 p-4 rounded-xl space-y-3"
               >
-                <div>
-                  <div className="flex justify-between items-baseline mb-2">
-                    <h3 className="font-semibold text-sm text-white">
-                      {car.car} ({car.driver})
-                    </h3>
-                    <div className="flex items-center gap-2">
-                      <span
-                        className={`text-[11px] font-semibold ${
-                          availableSeats > 0 ? "text-emerald-400" : "text-slate-500"
-                        }`}
+                {isEditing ? (
+                  <div className="space-y-3 text-xs">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-slate-400 block mb-0.5">Conductor</label>
+                        <input
+                          type="text"
+                          value={editDriverName ?? ""}
+                          onChange={(e) => setEditDriverName(e.target.value)}
+                          className="w-full bg-slate-950 border border-slate-700 rounded-md px-2 py-1 text-white focus:outline-none focus:border-emerald-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-slate-400 block mb-0.5">Cupos máx</label>
+                        <input
+                          type="number"
+                          min={passengers.length || 1}
+                          max={9}
+                          value={editSeatsAvailable ?? 3}
+                          onChange={(e) => setEditSeatsAvailable(Number(e.target.value))}
+                          className="w-full bg-slate-950 border border-slate-700 rounded-md px-2 py-1 text-white focus:outline-none focus:border-emerald-500"
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-slate-400 block mb-0.5">Punto salida</label>
+                        <input
+                          type="text"
+                          value={editDepartureLocation ?? ""}
+                          onChange={(e) => setEditDepartureLocation(e.target.value)}
+                          className="w-full bg-slate-950 border border-slate-700 rounded-md px-2 py-1 text-white focus:outline-none focus:border-emerald-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-slate-400 block mb-0.5">Hora salida</label>
+                        <input
+                          type="text"
+                          value={editDepartureTime ?? ""}
+                          onChange={(e) => setEditDepartureTime(e.target.value)}
+                          className="w-full bg-slate-950 border border-slate-700 rounded-md px-2 py-1 text-white focus:outline-none focus:border-emerald-500"
+                        />
+                      </div>
+                    </div>
+                    <div className="flex justify-end gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={cancelEditing}
+                        className="px-2.5 py-1 rounded bg-slate-800 text-slate-300 hover:bg-slate-700"
                       >
-                        {availableSeats} cupos libres
-                      </span>
-                      {isUserDriver && (
-                        <button
-                          onClick={() => onDeleteCar(car.id)}
-                          title="Eliminar auto"
-                          className="text-slate-500 hover:text-rose-400 text-xs"
-                        >
-                          🗑️
-                        </button>
-                      )}
+                        Cancelar
+                      </button>
+                      <button
+                        type="button"
+                        disabled={savingEdit}
+                        onClick={() => handleUpdateCarpool(car.id)}
+                        className="px-2.5 py-1 rounded bg-emerald-600 text-white font-medium hover:bg-emerald-500"
+                      >
+                        {savingEdit ? "Guardando..." : "Guardar"}
+                      </button>
                     </div>
                   </div>
-
-                  <div className="flex items-center justify-between text-xs text-slate-400 mb-2 py-1 px-2 bg-slate-900/80 rounded border border-slate-800">
-                    <span>
-                      Capacidad total: <strong className="text-white">{car.totalSeats} asientos</strong>
-                    </span>
-                    {isUserDriver && (
-                      <div className="flex items-center gap-1">
-                        <button
-                          type="button"
-                          onClick={() => onUpdateSeats(car.id, -1)}
-                          className="w-5 h-5 flex items-center justify-center bg-slate-800 hover:bg-slate-700 text-slate-200 rounded border border-slate-700"
+                ) : (
+                  <>
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <h4 className="font-semibold text-sm text-white flex items-center gap-2">
+                          🚗 {car.driver_name || "Sin nombre"}
+                        </h4>
+                        <p className="text-[11px] text-slate-400">
+                          📍 {car.departure_location || "Sin lugar fijado"} • ⏰ {car.departure_time || "Por definir"}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={`text-[10px] px-2 py-0.5 rounded-full font-mono border ${
+                            isFull
+                              ? "bg-rose-950/60 text-rose-400 border-rose-800"
+                              : "bg-emerald-950/60 text-emerald-400 border-emerald-800"
+                          }`}
                         >
-                          -
+                          {passengers.length}/{car.seats_available} cupos
+                        </span>
+                        <button
+                          onClick={() => startEditing(car)}
+                          className="text-slate-400 hover:text-slate-200 text-xs px-1"
+                          title="Editar detalles del auto"
+                        >
+                          ✎
                         </button>
                         <button
-                          type="button"
-                          onClick={() => onUpdateSeats(car.id, 1)}
-                          className="w-5 h-5 flex items-center justify-center bg-slate-800 hover:bg-slate-700 text-slate-200 rounded border border-slate-700"
+                          onClick={() => handleDeleteCarpool(car.id)}
+                          className="text-slate-500 hover:text-rose-400 text-xs px-1"
+                          title="Eliminar auto"
                         >
-                          +
+                          ✕
                         </button>
                       </div>
-                    )}
-                  </div>
-
-                  <p className="text-xs text-slate-400 mb-1">
-                    <strong className="text-slate-300">Punto:</strong> {car.meetingPoint}
-                  </p>
-                  <p className="text-xs text-slate-400">
-                    <strong className="text-slate-300">Pasajeros:</strong>{" "}
-                    {car.passengers.length > 0 ? car.passengers.join(", ") : "Sin pasajeros aún"}
-                  </p>
-                </div>
-
-                <div className="pt-2 border-t border-slate-800/80">
-                  {isUserDriver ? (
-                    <div className="text-center py-1">
-                      <span className="text-[11px] text-emerald-400 font-medium">
-                        🚗 Eres el conductor
-                      </span>
                     </div>
-                  ) : isDriverAnywhere ? (
-                    <button
-                      disabled
-                      className="w-full text-xs py-1.5 rounded font-medium bg-slate-900 text-slate-600 border border-slate-800 cursor-not-allowed"
-                    >
-                      No puedes sumarte (conduces tu auto)
-                    </button>
-                  ) : isUserInThisCar ? (
-                    <button
-                      onClick={() => onLeaveCar(car.id)}
-                      className="w-full text-xs bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 py-1.5 rounded transition-colors"
-                    >
-                      Bajarme de este auto
-                    </button>
-                  ) : (
-                    <button
-                      onClick={() => onJoinCar(car.id)}
-                      disabled={availableSeats <= 0}
-                      className={`w-full text-xs py-1.5 rounded font-medium transition-colors ${
-                        availableSeats > 0
-                          ? "bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700"
-                          : "bg-slate-900 text-slate-600 border border-slate-800 cursor-not-allowed"
-                      }`}
-                    >
-                      {availableSeats > 0 ? "🚗 Sumarme a este auto" : "Auto lleno"}
-                    </button>
-                  )}
-                </div>
+
+                    <div>
+                      <p className="text-[11px] font-medium text-slate-400 mb-1.5">Pasajeros a bordo:</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {passengers.length > 0 ? (
+                          passengers.map((p) => (
+                            <span
+                              key={p}
+                              className="bg-slate-800 text-slate-300 text-[10px] px-2 py-0.5 rounded-md border border-slate-700"
+                            >
+                              {p}
+                            </span>
+                          ))
+                        ) : (
+                          <span className="text-[10px] text-slate-600 italic">Auto vacío por ahora</span>
+                        )}
+                      </div>
+                    </div>
+
+                    {participants.length > 0 && (
+                      <div className="pt-2 border-t border-slate-800/80">
+                        <p className="text-[10px] text-slate-500 mb-1">Subir / Bajar integrante:</p>
+                        <div className="flex flex-wrap gap-1">
+                          {participants.map((pt) => {
+                            const inThisCar = passengers.includes(pt.name);
+                            return (
+                              <button
+                                key={pt.id}
+                                type="button"
+                                onClick={() => handleTogglePassenger(car, pt.name)}
+                                className={`text-[10px] px-2 py-0.5 rounded border transition-colors ${
+                                  inThisCar
+                                    ? "bg-emerald-900/60 border-emerald-700 text-emerald-300"
+                                    : "bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700"
+                                }`}
+                              >
+                                {inThisCar ? `✓ ${pt.name}` : `+ ${pt.name}`}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
             );
           })
         )}
       </div>
-    </section>
+    </div>
   );
 }
