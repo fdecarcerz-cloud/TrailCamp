@@ -1,5 +1,5 @@
 -- Copia completa de la estructura de la base de datos de Supabase (schema public).
--- Foto tomada el 2026-10-14, después de aplicar migrations/20261014170000_expenses_pagos.sql.
+-- Foto tomada el 2026-10-14, después de aplicar migrations/20261014190000_equipo_editar_y_borrar_seguro.sql.
 -- Sirve para recrear la base de datos desde cero en un proyecto vacío (SQL Editor -> pegar -> Run).
 -- No contiene datos (viajes, gastos, etc.), solo la estructura.
 -- Actualizar este archivo cada vez que se cambie la base de datos.
@@ -86,6 +86,61 @@ alter table participants add constraint participants_trip_id_fkey FOREIGN KEY (t
 
 alter table trips add constraint trips_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE;
 
+CREATE UNIQUE INDEX participants_nombre_unico_por_viaje ON public.participants USING btree (trip_id, lower(btrim(name)));
+
+CREATE OR REPLACE FUNCTION public.borrar_participante(p_id bigint)
+ RETURNS void
+ LANGUAGE plpgsql
+ SET search_path TO ''
+AS $function$
+declare
+  v_nombre text;
+  v_viaje bigint;
+  v_gastos int;
+begin
+  select name, trip_id into v_nombre, v_viaje from public.participants where id = p_id;
+  if not found then
+    raise exception 'No se encontró a esa persona en el equipo.';
+  end if;
+  if not public.es_creador_viaje(v_viaje) then
+    raise exception 'Solo el creador del viaje puede borrar personas del equipo.';
+  end if;
+
+  select count(*) into v_gastos from public.expenses
+  where trip_id = v_viaje and (paid_by = v_nombre or v_nombre = any(split_between));
+
+  if v_gastos > 0 then
+    raise exception '% aparece en %. Edita o borra esos gastos primero, para que las cuentas no queden mal.',
+      v_nombre,
+      case when v_gastos = 1 then '1 gasto o pago' else v_gastos || ' gastos o pagos' end;
+  end if;
+
+  update public.gear
+  set assigned_to = null,
+      status = case when status = 'Asignado' then 'Pendiente' else status end
+  where trip_id = v_viaje and assigned_to = v_nombre;
+
+  update public.carpools set passengers = array_remove(passengers, v_nombre)
+  where trip_id = v_viaje and v_nombre = any(passengers);
+
+  delete from public.participants where id = p_id;
+end;
+$function$
+;
+
+CREATE OR REPLACE FUNCTION public.es_creador_viaje(viaje_id bigint)
+ RETURNS boolean
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+  select exists (
+    select 1 from public.trips t
+    where t.id = viaje_id and t.user_id = (select auth.uid())
+  );
+$function$
+;
+
 CREATE OR REPLACE FUNCTION public.puede_ver_viaje(viaje_id bigint)
  RETURNS boolean
  LANGUAGE sql
@@ -100,6 +155,54 @@ AS $function$
     where p.trip_id = viaje_id
       and lower(p.email) = lower((select auth.jwt()) ->> 'email')
   );
+$function$
+;
+
+CREATE OR REPLACE FUNCTION public.renombrar_participante(p_id bigint, p_nombre text, p_email text, p_rol text)
+ RETURNS void
+ LANGUAGE plpgsql
+ SET search_path TO ''
+AS $function$
+declare
+  v_viejo text;
+  v_viaje bigint;
+  v_nuevo text := btrim(coalesce(p_nombre, ''));
+begin
+  if v_nuevo = '' then
+    raise exception 'El nombre no puede quedar vacío.';
+  end if;
+
+  select name, trip_id into v_viejo, v_viaje from public.participants where id = p_id;
+  if not found then
+    raise exception 'No se encontró a esa persona en el equipo.';
+  end if;
+  if not public.es_creador_viaje(v_viaje) then
+    raise exception 'Solo el creador del viaje puede editar el equipo.';
+  end if;
+
+  update public.participants
+  set name = v_nuevo,
+      email = nullif(btrim(coalesce(p_email, '')), ''),
+      role = p_rol
+  where id = p_id;
+
+  if v_viejo is distinct from v_nuevo then
+    update public.gear set assigned_to = v_nuevo
+    where trip_id = v_viaje and assigned_to = v_viejo;
+
+    update public.carpools set passengers = array_replace(passengers, v_viejo, v_nuevo)
+    where trip_id = v_viaje and v_viejo = any(passengers);
+
+    update public.expenses set paid_by = v_nuevo
+    where trip_id = v_viaje and paid_by = v_viejo;
+
+    update public.expenses set split_between = array_replace(split_between, v_viejo, v_nuevo)
+    where trip_id = v_viaje and v_viejo = any(split_between);
+
+    update public.expenses set description = 'Pago de ' || paid_by || ' a ' || split_between[1]
+    where trip_id = v_viaje and is_settlement;
+  end if;
+end;
 $function$
 ;
 
@@ -159,9 +262,18 @@ create policy "Acceso por viaje" on public.gear as PERMISSIVE for ALL to authent
   using (puede_ver_viaje(trip_id))
   with check (puede_ver_viaje(trip_id));
 
-create policy "Acceso por viaje" on public.participants as PERMISSIVE for ALL to authenticated
-  using (puede_ver_viaje(trip_id))
+create policy "Agregar al equipo" on public.participants as PERMISSIVE for INSERT to authenticated
   with check (puede_ver_viaje(trip_id));
+
+create policy "Borrar del equipo (creador)" on public.participants as PERMISSIVE for DELETE to authenticated
+  using (es_creador_viaje(trip_id));
+
+create policy "Editar equipo (creador)" on public.participants as PERMISSIVE for UPDATE to authenticated
+  using (es_creador_viaje(trip_id))
+  with check (es_creador_viaje(trip_id));
+
+create policy "Ver equipo del viaje" on public.participants as PERMISSIVE for SELECT to authenticated
+  using (puede_ver_viaje(trip_id));
 
 create policy "Crear viajes propios" on public.trips as PERMISSIVE for INSERT to public
   with check ((auth.uid() = user_id));
@@ -179,3 +291,9 @@ create policy "Ver mis viajes o donde participo" on public.trips as PERMISSIVE f
 
 revoke execute on function public.puede_ver_viaje(bigint) from public, anon;
 grant execute on function public.puede_ver_viaje(bigint) to authenticated;
+revoke execute on function public.es_creador_viaje(bigint) from public, anon;
+grant execute on function public.es_creador_viaje(bigint) to authenticated;
+revoke execute on function public.renombrar_participante(bigint, text, text, text) from public, anon;
+grant execute on function public.renombrar_participante(bigint, text, text, text) to authenticated;
+revoke execute on function public.borrar_participante(bigint) from public, anon;
+grant execute on function public.borrar_participante(bigint) to authenticated;

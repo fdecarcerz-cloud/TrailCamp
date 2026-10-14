@@ -24,7 +24,7 @@ export interface Participant {
   id: string;
   trip_id: string;
   name: string;
-  email: string;
+  email?: string | null;
   role: "Organizador" | "Guía" | "Participante";
   status: "Confirmado" | "Pendiente" | "Cancelado";
 }
@@ -484,6 +484,7 @@ Se borrarán también su equipo, material, autos y gastos. Esto no se puede desh
                   <ParticipantsSection
                     tripId={selectedTrip.id}
                     participants={participants}
+                    isCreator={selectedTrip.user_id === currentUserId}
                     onRefresh={() => fetchTripDetails(selectedTrip.id)}
                   />
                 )}
