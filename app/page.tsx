@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
 import { formatDateRange } from "@/lib/dates";
 import AuthModal from "@/components/AuthModal";
+import NewPasswordModal from "@/components/NewPasswordModal";
 import ParticipantsSection from "@/components/ParticipantsSection";
 import GearSection from "@/components/GearSection";
 import CarpoolSection from "@/components/CarpoolSection";
@@ -69,6 +70,7 @@ export default function Home() {
   const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [isRecoveringPassword, setIsRecoveringPassword] = useState(false);
 
   // Estados de datos
   const [participants, setParticipants] = useState<Participant[]>([]);
@@ -95,7 +97,9 @@ export default function Home() {
     };
     checkSession();
 
-    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
+      // Llegó desde el enlace del correo "Recuperar contraseña"
+      if (event === "PASSWORD_RECOVERY") setIsRecoveringPassword(true);
       setCurrentUserId(session?.user?.id ?? null);
       if (session?.user?.email) {
         setCurrentUserEmail(session.user.email);
@@ -523,6 +527,14 @@ Se borrarán también su equipo, material, autos y gastos. Esto no se puede desh
           )}
         </div>
       </div>
+
+      <NewPasswordModal
+        isOpen={isRecoveringPassword}
+        onDone={() => {
+          setIsRecoveringPassword(false);
+          fetchTrips();
+        }}
+      />
 
       <AuthModal
         isOpen={isAuthModalOpen}
