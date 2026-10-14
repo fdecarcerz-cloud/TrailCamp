@@ -32,7 +32,7 @@ export interface GearItem {
   id: string;
   trip_id: string;
   name: string;
-  category: "Cocina" | "Campamento" | "Seguridad" | "Navegación" | "Otro";
+  priority: "Imprescindible" | "Importante" | "Opcional";
   assigned_to?: string;
   status: "Pendiente" | "Asignado" | "Empacado";
   quantity: number;

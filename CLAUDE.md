@@ -10,6 +10,11 @@ TrailCamp organizes camping trips and getaways: a home screen with the user's tr
 
 Deployed on Vercel from GitHub: pushing to `main` goes to production, so run `npm run build` before pushing and never push without the user's OK.
 
+- The Vercel project is `trail-camp` (https://trail-camp.vercel.app). The folder is linked (`.vercel/`) and the CLI is used via `npx vercel` (network, so the sandbox must be disabled).
+- Check deploys with `npx vercel ls trail-camp` and logs with `npx vercel inspect <url> --logs`.
+- The Supabase env vars live in Vercel for Production and Preview.
+- `vercel link` and `vercel env pull` rewrite `.env.local`, so check the Supabase keys survive afterwards.
+
 ## Commands
 
 - `npm run dev`: dev server at http://localhost:3000
@@ -43,5 +48,5 @@ TrailCamp is a single-page trip/expedition coordinator. The UI text and code com
 - `components/AuthModal.tsx` handles email/password sign-in and sign-up.
 - **Access control is enforced by Supabase RLS policies, not by the app.** `trips` queries have no user filter and rely on RLS. Creating a trip sets `user_id` and automatically inserts the creator as an `Organizador` participant. `trips` policies allow the owner, or anyone whose email is in that trip's `participants`. The other four tables use the security-definer helper `public.puede_ver_viaje(trip_id)`.
 - Participants are referenced **by name, not ID**: `Expense.paid_by`, `Expense.split_between`, `GearItem.assigned_to` and `Carpool.passengers` store participant names. Renaming or deleting a participant does not cascade to these fields.
-- The live DB has drifted from the TS interfaces in `app/page.tsx`. Ids are `bigint`, not strings. Tables also keep legacy columns: `trips.title`/`date` are kept in sync with `name`/`start_date` by triggers, and `carpools` has `driver`/`car`/`total_seats`. `gear` has `item`/`priority` and no `name`/`category`/`status`, so `GearSection` writes fail. Check `supabase/estructura_actual.sql` before trusting the interfaces.
+- The live DB has drifted from the TS interfaces in `app/page.tsx`. Ids are `bigint`, not strings. Tables also keep legacy columns: `trips.title`/`date` are kept in sync with `name`/`start_date` by triggers, and `carpools` has `driver`/`car`/`total_seats`. In `gear`, the app uses `name`/`priority` (Imprescindible/Importante/Opcional)/`status`. Legacy `item` is nullable and the app no longer writes it. Check `supabase/estructura_actual.sql` before trusting the interfaces.
 - `ExpensesSection` computes per-person balances and a greedy minimal-transfers settlement client-side (amounts are rounded, and balances within ±1 are ignored).

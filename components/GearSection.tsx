@@ -4,6 +4,19 @@ import { useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { GearItem, Participant } from "@/app/page";
 
+const PRIORITIES: GearItem["priority"][] = ["Imprescindible", "Importante", "Opcional"];
+
+const PRIORITY_STYLES: Record<GearItem["priority"], string> = {
+  Imprescindible: "bg-rose-950/60 text-rose-300 border-rose-800",
+  Importante: "bg-amber-950/60 text-amber-300 border-amber-800",
+  Opcional: "bg-slate-800 text-slate-400 border-slate-700",
+};
+
+const priorityRank = (p: GearItem["priority"]) => {
+  const i = PRIORITIES.indexOf(p);
+  return i === -1 ? PRIORITIES.length : i;
+};
+
 interface GearSectionProps {
   tripId: string;
   gear: GearItem[];
@@ -18,7 +31,7 @@ export default function GearSection({
   onRefresh,
 }: GearSectionProps) {
   const [name, setName] = useState("");
-  const [category, setCategory] = useState<GearItem["category"]>("Campamento");
+  const [priority, setPriority] = useState<GearItem["priority"]>("Importante");
   const [quantity, setQuantity] = useState<number>(1);
   const [assignedTo, setAssignedTo] = useState("");
   const [loading, setLoading] = useState(false);
@@ -26,7 +39,7 @@ export default function GearSection({
   // Edición
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
-  const [editCategory, setEditCategory] = useState<GearItem["category"]>("Campamento");
+  const [editPriority, setEditPriority] = useState<GearItem["priority"]>("Importante");
   const [editQuantity, setEditQuantity] = useState(1);
   const [editAssignedTo, setEditAssignedTo] = useState("");
   const [savingEdit, setSavingEdit] = useState(false);
@@ -41,7 +54,7 @@ export default function GearSection({
         {
           trip_id: tripId,
           name: name.trim(),
-          category,
+          priority,
           quantity: Number(quantity) || 1,
           assigned_to: assignedTo.trim() || null,
           status: assignedTo.trim() ? "Asignado" : "Pendiente",
@@ -64,24 +77,27 @@ export default function GearSection({
   const startEditing = (item: GearItem) => {
     setEditingId(item.id);
     setEditName(item.name ?? "");
-    setEditCategory(item.category ?? "Campamento");
+    setEditPriority(item.priority ?? "Importante");
     setEditQuantity(item.quantity ?? 1);
     setEditAssignedTo(item.assigned_to ?? "");
   };
 
-  const handleUpdateGear = async (id: string) => {
+  const handleUpdateGear = async (item: GearItem) => {
     setSavingEdit(true);
     try {
+      // Editar no debe desmarcar algo que ya estaba empacado
+      const status =
+        item.status === "Empacado" ? "Empacado" : editAssignedTo.trim() ? "Asignado" : "Pendiente";
       const { error } = await supabase
         .from("gear")
         .update({
           name: editName.trim(),
-          category: editCategory,
+          priority: editPriority,
           quantity: Number(editQuantity) || 1,
           assigned_to: editAssignedTo.trim() || null,
-          status: editAssignedTo.trim() ? "Asignado" : "Pendiente",
+          status,
         })
-        .eq("id", id);
+        .eq("id", item.id);
 
       if (error) throw error;
 
@@ -120,8 +136,29 @@ export default function GearSection({
     }
   };
 
+  // Primero lo no empacado, y dentro de eso lo más importante
+  const sortedGear = [...gear].sort((a, b) => {
+    const packedDiff = Number(a.status === "Empacado") - Number(b.status === "Empacado");
+    if (packedDiff !== 0) return packedDiff;
+    const priorityDiff = priorityRank(a.priority) - priorityRank(b.priority);
+    if (priorityDiff !== 0) return priorityDiff;
+    return (a.name ?? "").localeCompare(b.name ?? "");
+  });
+
+  const criticalPending = gear.filter(
+    (item) => item.priority === "Imprescindible" && item.status !== "Empacado"
+  ).length;
+
   return (
     <div className="space-y-6">
+      {criticalPending > 0 && (
+        <div className="bg-rose-950/40 border border-rose-800/70 text-rose-200 text-xs px-4 py-3 rounded-xl">
+          ⚠️ {criticalPending === 1
+            ? "Falta empacar 1 cosa imprescindible."
+            : `Faltan empacar ${criticalPending} cosas imprescindibles.`}
+        </div>
+      )}
+
       {/* Formulario nuevo material */}
       <form
         onSubmit={handleAddGear}
@@ -140,17 +177,17 @@ export default function GearSection({
         </div>
 
         <div>
-          <label className="text-slate-400 block mb-1">Categoría</label>
+          <label className="text-slate-400 block mb-1">Importancia</label>
           <select
-            value={category}
-            onChange={(e) => setCategory(e.target.value as GearItem["category"])}
+            value={priority}
+            onChange={(e) => setPriority(e.target.value as GearItem["priority"])}
             className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
           >
-            <option value="Campamento">Campamento</option>
-            <option value="Cocina">Cocina</option>
-            <option value="Seguridad">Seguridad</option>
-            <option value="Navegación">Navegación</option>
-            <option value="Otro">Otro</option>
+            {PRIORITIES.map((p) => (
+              <option key={p} value={p}>
+                {p}
+              </option>
+            ))}
           </select>
         </div>
 
@@ -197,9 +234,10 @@ export default function GearSection({
             Aún no hay equipo registrado para esta expedición.
           </div>
         ) : (
-          gear.map((item) => {
+          sortedGear.map((item) => {
             const isEditing = editingId === item.id;
             const isPacked = item.status === "Empacado";
+            const isCriticalPending = item.priority === "Imprescindible" && !isPacked;
 
             if (isEditing) {
               return (
@@ -218,17 +256,17 @@ export default function GearSection({
                       />
                     </div>
                     <div>
-                      <label className="text-slate-400 block mb-0.5">Categoría</label>
+                      <label className="text-slate-400 block mb-0.5">Importancia</label>
                       <select
-                        value={editCategory}
-                        onChange={(e) => setEditCategory(e.target.value as GearItem["category"])}
+                        value={editPriority}
+                        onChange={(e) => setEditPriority(e.target.value as GearItem["priority"])}
                         className="w-full bg-slate-950 border border-slate-700 rounded-md px-2 py-1 text-white"
                       >
-                        <option value="Campamento">Campamento</option>
-                        <option value="Cocina">Cocina</option>
-                        <option value="Seguridad">Seguridad</option>
-                        <option value="Navegación">Navegación</option>
-                        <option value="Otro">Otro</option>
+                        {PRIORITIES.map((p) => (
+                          <option key={p} value={p}>
+                            {p}
+                          </option>
+                        ))}
                       </select>
                     </div>
                     <div>
@@ -269,7 +307,7 @@ export default function GearSection({
                     <button
                       type="button"
                       disabled={savingEdit}
-                      onClick={() => handleUpdateGear(item.id)}
+                      onClick={() => handleUpdateGear(item)}
                       className="px-3 py-1 rounded bg-emerald-600 text-white font-medium hover:bg-emerald-500"
                     >
                       {savingEdit ? "Guardando..." : "Guardar"}
@@ -285,7 +323,9 @@ export default function GearSection({
                 className={`p-3.5 rounded-xl border flex items-center justify-between text-xs transition-colors ${
                   isPacked
                     ? "bg-slate-900/30 border-slate-800/50 text-slate-500 opacity-75"
-                    : "bg-slate-900/70 border-slate-800 text-slate-200"
+                    : isCriticalPending
+                      ? "bg-rose-950/20 border-rose-800/60 text-slate-200"
+                      : "bg-slate-900/70 border-slate-800 text-slate-200"
                 }`}
               >
                 <div className="flex items-center gap-3">
@@ -308,8 +348,13 @@ export default function GearSection({
                       (x{item.quantity})
                     </span>
                     <div className="flex items-center gap-2 mt-1">
-                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700">
-                        {item.category}
+                      <span
+                        className={`text-[10px] px-1.5 py-0.5 rounded border ${
+                          PRIORITY_STYLES[item.priority] ?? PRIORITY_STYLES.Opcional
+                        }`}
+                      >
+                        {isCriticalPending && "⚠️ "}
+                        {item.priority}
                       </span>
                       {item.assigned_to ? (
                         <span className="text-[10px] text-emerald-400">
