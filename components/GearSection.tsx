@@ -147,15 +147,28 @@ export default function GearSection({
 
   const criticalPending = gear.filter(
     (item) => item.priority === "Imprescindible" && item.status !== "Empacado"
-  ).length;
+  );
+  const criticalUnassigned = criticalPending.filter((item) => !item.assigned_to).length;
+
+  const alertParts: string[] = [];
+  if (criticalUnassigned > 0) {
+    alertParts.push(
+      criticalUnassigned === 1
+        ? "1 imprescindible sin nadie que lo lleve"
+        : `${criticalUnassigned} imprescindibles sin nadie que los lleve`
+    );
+  }
+  alertParts.push(
+    criticalPending.length === 1
+      ? "1 imprescindible sin empacar"
+      : `${criticalPending.length} imprescindibles sin empacar`
+  );
 
   return (
     <div className="space-y-6">
-      {criticalPending > 0 && (
+      {criticalPending.length > 0 && (
         <div className="bg-rose-950/40 border border-rose-800/70 text-rose-200 text-xs px-4 py-3 rounded-xl">
-          ⚠️ {criticalPending === 1
-            ? "Falta empacar 1 cosa imprescindible."
-            : `Faltan empacar ${criticalPending} cosas imprescindibles.`}
+          ⚠️ {alertParts.join(" · ")}
         </div>
       )}
 
@@ -203,13 +216,13 @@ export default function GearSection({
         </div>
 
         <div>
-          <label className="text-slate-400 block mb-1">Asignar a</label>
+          <label className="text-slate-400 block mb-1">¿Quién lo lleva?</label>
           <select
             value={assignedTo}
             onChange={(e) => setAssignedTo(e.target.value)}
             className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
           >
-            <option value="">Sin asignar</option>
+            <option value="">Nadie todavía</option>
             {participants.map((p) => (
               <option key={p.id} value={p.name}>
                 {p.name}
@@ -280,13 +293,13 @@ export default function GearSection({
                       />
                     </div>
                     <div>
-                      <label className="text-slate-400 block mb-0.5">Asignado a</label>
+                      <label className="text-slate-400 block mb-0.5">¿Quién lo lleva?</label>
                       <select
                         value={editAssignedTo}
                         onChange={(e) => setEditAssignedTo(e.target.value)}
                         className="w-full bg-slate-950 border border-slate-700 rounded-md px-2 py-1 text-white"
                       >
-                        <option value="">Sin asignar</option>
+                        <option value="">Nadie todavía</option>
                         {participants.map((p) => (
                           <option key={p.id} value={p.name}>
                             {p.name}
@@ -331,14 +344,21 @@ export default function GearSection({
                 <div className="flex items-center gap-3">
                   <button
                     onClick={() => handleToggleStatus(item)}
-                    className={`w-5 h-5 rounded flex items-center justify-center border transition-colors ${
-                      isPacked
-                        ? "bg-emerald-600 border-emerald-500 text-white"
-                        : "border-slate-700 hover:border-slate-500 bg-slate-950"
-                    }`}
+                    className="flex flex-col items-center gap-0.5 group"
                     title={isPacked ? "Marcar como no empacado" : "Marcar como empacado"}
                   >
-                    {isPacked && "✓"}
+                    <span
+                      className={`w-5 h-5 rounded flex items-center justify-center border transition-colors ${
+                        isPacked
+                          ? "bg-emerald-600 border-emerald-500 text-white"
+                          : "border-slate-700 group-hover:border-slate-500 bg-slate-950"
+                      }`}
+                    >
+                      {isPacked && "✓"}
+                    </span>
+                    <span className={`text-[9px] ${isPacked ? "text-emerald-500" : "text-slate-500"}`}>
+                      Empacado
+                    </span>
                   </button>
                   <div>
                     <span className={`font-medium ${isPacked ? "line-through text-slate-500" : "text-white"}`}>
@@ -356,13 +376,21 @@ export default function GearSection({
                         {isCriticalPending && "⚠️ "}
                         {item.priority}
                       </span>
-                      {item.assigned_to ? (
-                        <span className="text-[10px] text-emerald-400">
-                          👤 {item.assigned_to}
+                      {isPacked ? (
+                        <span className="text-[10px] text-emerald-500">
+                          ✓ Empacado{item.assigned_to && ` · ${item.assigned_to}`}
+                        </span>
+                      ) : item.assigned_to ? (
+                        <span className="text-[10px] text-slate-300">
+                          👤 Lo lleva {item.assigned_to} · <span className="text-amber-400">falta empacar</span>
                         </span>
                       ) : (
-                        <span className="text-[10px] text-slate-600 italic">
-                          Sin asignar
+                        <span
+                          className={`text-[10px] font-medium ${
+                            item.priority === "Imprescindible" ? "text-rose-400" : "text-amber-400"
+                          }`}
+                        >
+                          ⚠️ Nadie lo lleva todavía
                         </span>
                       )}
                     </div>
