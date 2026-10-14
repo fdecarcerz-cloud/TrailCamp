@@ -65,6 +65,7 @@ export default function Home() {
 
   // Sesión Supabase
   const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
 
   // Estados de datos
@@ -75,6 +76,7 @@ export default function Home() {
 
   // Modal nuevo viaje
   const [showNewTripModal, setShowNewTripModal] = useState(false);
+  const [editingTripId, setEditingTripId] = useState<string | null>(null);
   const [newTripName, setNewTripName] = useState("");
   const [newTripDestination, setNewTripDestination] = useState("");
   const [newTripStart, setNewTripStart] = useState("");
@@ -87,10 +89,12 @@ export default function Home() {
       if (data.user?.email) {
         setCurrentUserEmail(data.user.email);
       }
+      setCurrentUserId(data.user?.id ?? null);
     };
     checkSession();
 
     const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+      setCurrentUserId(session?.user?.id ?? null);
       if (session?.user?.email) {
         setCurrentUserEmail(session.user.email);
       } else {
@@ -108,6 +112,7 @@ export default function Home() {
   const handleSignOut = async () => {
     await supabase.auth.signOut();
     setCurrentUserEmail(null);
+    setCurrentUserId(null);
     setTrips([]);
     setSelectedTripId(null);
   };
@@ -179,9 +184,61 @@ export default function Home() {
     }
   }, [selectedTripId, fetchTripDetails]);
 
-  // 4. Crear nuevo viaje con pertenencia de usuario (user_id)
-  const handleCreateTrip = async (e: React.FormEvent) => {
+  const openNewTripModal = () => {
+    setEditingTripId(null);
+    setNewTripName("");
+    setNewTripDestination("");
+    setNewTripStart("");
+    setNewTripEnd("");
+    setShowNewTripModal(true);
+  };
+
+  const openEditTripModal = (trip: Trip) => {
+    setEditingTripId(trip.id);
+    setNewTripName(trip.name ?? "");
+    setNewTripDestination(trip.destination ?? "");
+    setNewTripStart(trip.start_date ?? "");
+    setNewTripEnd(trip.end_date ?? "");
+    setShowNewTripModal(true);
+  };
+
+  const closeTripModal = () => {
+    setShowNewTripModal(false);
+    setEditingTripId(null);
+  };
+
+  // 4. Crear o editar viaje (crear guarda user_id; editar y borrar solo los permite RLS al dueño)
+  const handleSaveTrip = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (newTripEnd < newTripStart) {
+      alert("La fecha de término no puede ser antes de la fecha de inicio.");
+      return;
+    }
+
+    if (editingTripId) {
+      const { error } = await supabase
+        .from("trips")
+        .update({
+          name: newTripName.trim(),
+          // title y date son columnas antiguas; se mantienen iguales a name y start_date
+          title: newTripName.trim(),
+          destination: newTripDestination.trim(),
+          start_date: newTripStart,
+          date: newTripStart,
+          end_date: newTripEnd,
+        })
+        .eq("id", editingTripId);
+
+      if (error) {
+        alert("Error al guardar los cambios: " + error.message);
+        return;
+      }
+
+      closeTripModal();
+      await fetchTrips();
+      return;
+    }
 
     const { data: { user } } = await supabase.auth.getUser();
 
@@ -229,17 +286,31 @@ export default function Home() {
         }
       }
 
-      setShowNewTripModal(false);
-      setNewTripName("");
-      setNewTripDestination("");
-      setNewTripStart("");
-      setNewTripEnd("");
+      closeTripModal();
       await fetchTrips();
       if (data) setSelectedTripId(data.id);
     } catch (err: any) {
-      console.error("Error inesperado en handleCreateTrip:", err);
+      console.error("Error inesperado en handleSaveTrip:", err);
       alert("Error crítico: " + (err?.message || "Revisa la consola"));
     }
+  };
+
+  const handleDeleteTrip = async (trip: Trip) => {
+    const ok = confirm(
+      `¿Borrar "${trip.name}"?
+
+Se borrarán también su equipo, material, autos y gastos. Esto no se puede deshacer.`
+    );
+    if (!ok) return;
+
+    const { error } = await supabase.from("trips").delete().eq("id", trip.id);
+    if (error) {
+      alert("Error al borrar la expedición: " + error.message);
+      return;
+    }
+
+    setSelectedTripId(null);
+    await fetchTrips();
   };
 
   const selectedTrip = trips.find((t) => t.id === selectedTripId);
@@ -288,7 +359,7 @@ export default function Home() {
                 setIsAuthModalOpen(true);
                 return;
               }
-              setShowNewTripModal(true);
+              openNewTripModal();
             }}
             className="text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-semibold px-3 py-2 rounded-xl transition-colors"
           >
@@ -353,7 +424,27 @@ export default function Home() {
               <div className="bg-slate-900/60 border border-slate-800 p-5 rounded-2xl">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                   <div>
-                    <h2 className="text-lg font-bold text-white mb-1">{selectedTrip.name}</h2>
+                    <div className="flex items-center gap-2 mb-1">
+                      <h2 className="text-lg font-bold text-white">{selectedTrip.name}</h2>
+                      {selectedTrip.user_id === currentUserId && (
+                        <>
+                          <button
+                            onClick={() => openEditTripModal(selectedTrip)}
+                            className="text-[11px] text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 px-2 py-0.5 rounded-md transition-colors"
+                            title="Editar expedición"
+                          >
+                            ✎ Editar
+                          </button>
+                          <button
+                            onClick={() => handleDeleteTrip(selectedTrip)}
+                            className="text-[11px] text-slate-500 hover:text-rose-400 bg-slate-800 hover:bg-rose-950 px-2 py-0.5 rounded-md transition-colors"
+                            title="Borrar expedición"
+                          >
+                            ✕ Borrar
+                          </button>
+                        </>
+                      )}
+                    </div>
                     <div className="flex flex-wrap items-center gap-3 text-xs text-slate-400">
                       <span className="text-emerald-400 font-medium">📍 {selectedTrip.destination}</span>
                       <span>•</span>
@@ -442,8 +533,10 @@ export default function Home() {
       {showNewTripModal && (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md p-6 relative shadow-2xl">
-            <h3 className="text-base font-bold text-white mb-4">Nueva Expedición</h3>
-            <form onSubmit={handleCreateTrip} className="space-y-4 text-xs">
+            <h3 className="text-base font-bold text-white mb-4">
+              {editingTripId ? "Editar Expedición" : "Nueva Expedición"}
+            </h3>
+            <form onSubmit={handleSaveTrip} className="space-y-4 text-xs">
               <div>
                 <label className="block text-slate-400 mb-1 font-medium">Nombre de la salida</label>
                 <input
@@ -496,7 +589,7 @@ export default function Home() {
               <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
                 <button
                   type="button"
-                  onClick={() => setShowNewTripModal(false)}
+                  onClick={closeTripModal}
                   className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold"
                 >
                   Cancelar
@@ -505,7 +598,7 @@ export default function Home() {
                   type="submit"
                   className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold"
                 >
-                  Guardar Expedición
+                  {editingTripId ? "Guardar cambios" : "Guardar Expedición"}
                 </button>
               </div>
             </form>
