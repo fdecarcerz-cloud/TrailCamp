@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { supabase } from "@/lib/supabase";
+import AddFormToggle from "@/components/AddFormToggle";
 import { Carpool, Participant } from "@/app/page";
 
 interface CarpoolSectionProps {
@@ -140,64 +141,66 @@ export default function CarpoolSection({
 
   return (
     <div className="space-y-6">
-      <form
-        onSubmit={handleAddCarpool}
-        className="bg-slate-950/60 border border-slate-800 p-4 rounded-xl grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 items-end text-xs"
-      >
-        <div>
-          <label className="text-slate-400 block mb-1">Conductor / Auto</label>
-          <input
-            type="text"
-            required
-            placeholder="Ej: Camioneta Fernando"
-            value={driverName ?? ""}
-            onChange={(e) => setDriverName(e.target.value)}
-            className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
-          />
-        </div>
-
-        <div>
-          <label className="text-slate-400 block mb-1">Punto de salida</label>
-          <input
-            type="text"
-            placeholder="Ej: Metro Escuela Militar"
-            value={departureLocation ?? ""}
-            onChange={(e) => setDepartureLocation(e.target.value)}
-            className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
-          />
-        </div>
-
-        <div>
-          <label className="text-slate-400 block mb-1">Hora de salida</label>
-          <input
-            type="text"
-            placeholder="Ej: 07:30 AM"
-            value={departureTime ?? ""}
-            onChange={(e) => setDepartureTime(e.target.value)}
-            className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
-          />
-        </div>
-
-        <div>
-          <label className="text-slate-400 block mb-1">Cupos disponibles</label>
-          <input
-            type="number"
-            min={1}
-            max={9}
-            value={seatsAvailable ?? 3}
-            onChange={(e) => setSeatsAvailable(Number(e.target.value))}
-            className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
-          />
-        </div>
-
-        <button
-          type="submit"
-          disabled={loading}
-          className="bg-emerald-600 hover:bg-emerald-500 text-white font-semibold py-2 px-4 rounded-lg transition-colors disabled:opacity-50 h-[34px]"
+      <AddFormToggle label="+ Agregar auto">
+        <form
+          onSubmit={handleAddCarpool}
+          className="bg-slate-950/60 border border-slate-800 p-4 rounded-xl grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 items-end text-xs"
         >
-          {loading ? "Guardando..." : "+ Publicar auto"}
-        </button>
-      </form>
+          <div>
+            <label className="text-slate-400 block mb-1">Conductor / Auto</label>
+            <input
+              type="text"
+              required
+              placeholder="Ej: Camioneta Fernando"
+              value={driverName ?? ""}
+              onChange={(e) => setDriverName(e.target.value)}
+              className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
+            />
+          </div>
+
+          <div>
+            <label className="text-slate-400 block mb-1">Punto de salida</label>
+            <input
+              type="text"
+              placeholder="Ej: Metro Escuela Militar"
+              value={departureLocation ?? ""}
+              onChange={(e) => setDepartureLocation(e.target.value)}
+              className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
+            />
+          </div>
+
+          <div>
+            <label className="text-slate-400 block mb-1">Hora de salida</label>
+            <input
+              type="text"
+              placeholder="Ej: 07:30 AM"
+              value={departureTime ?? ""}
+              onChange={(e) => setDepartureTime(e.target.value)}
+              className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
+            />
+          </div>
+
+          <div>
+            <label className="text-slate-400 block mb-1">Cupos disponibles</label>
+            <input
+              type="number"
+              min={1}
+              max={9}
+              value={seatsAvailable ?? 3}
+              onChange={(e) => setSeatsAvailable(Number(e.target.value))}
+              className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="bg-emerald-600 hover:bg-emerald-500 text-white font-semibold py-2 px-4 rounded-lg transition-colors disabled:opacity-50 h-[34px]"
+          >
+            {loading ? "Guardando..." : "+ Publicar auto"}
+          </button>
+        </form>
+      </AddFormToggle>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {carpools.length === 0 ? (

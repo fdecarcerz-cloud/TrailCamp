@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { supabase } from "@/lib/supabase";
+import AddFormToggle from "@/components/AddFormToggle";
 import { Participant } from "@/app/page";
 
 type Role = Participant["role"];
@@ -127,56 +128,58 @@ export default function ParticipantsSection({
   return (
     <div className="space-y-6">
       {/* Formulario para sumar integrante */}
-      <form
-        onSubmit={handleAddParticipant}
-        className="bg-slate-950/60 border border-slate-800 p-4 rounded-xl grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 items-end text-xs"
-      >
-        <div>
-          <label className="text-slate-400 block mb-1">Nombre</label>
-          <input
-            type="text"
-            required
-            placeholder="Ej: Sofía Rojas"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
-          />
-        </div>
-
-        <div>
-          <label className="text-slate-400 block mb-1">Email (para que vea el viaje)</label>
-          <input
-            type="email"
-            placeholder="sofia@email.com"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
-          />
-        </div>
-
-        <div>
-          <label className="text-slate-400 block mb-1">Rol</label>
-          <select
-            value={role}
-            onChange={(e) => setRole(e.target.value as Role)}
-            className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
-          >
-            {ROLES.map((r) => (
-              <option key={r} value={r}>
-                {r}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <button
-          type="submit"
-          disabled={loading}
-          className="bg-emerald-600 hover:bg-emerald-500 text-white font-semibold py-2 px-4 rounded-lg transition-colors disabled:opacity-50 h-[34px]"
+      <AddFormToggle label="+ Sumar al equipo">
+        <form
+          onSubmit={handleAddParticipant}
+          className="bg-slate-950/60 border border-slate-800 p-4 rounded-xl grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 items-end text-xs"
         >
-          {loading ? "Agregando..." : "+ Sumar al equipo"}
-        </button>
-      </form>
+          <div>
+            <label className="text-slate-400 block mb-1">Nombre</label>
+            <input
+              type="text"
+              required
+              placeholder="Ej: Sofía Rojas"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
+            />
+          </div>
+
+          <div>
+            <label className="text-slate-400 block mb-1">Email (para que vea el viaje)</label>
+            <input
+              type="email"
+              placeholder="sofia@email.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
+            />
+          </div>
+
+          <div>
+            <label className="text-slate-400 block mb-1">Rol</label>
+            <select
+              value={role}
+              onChange={(e) => setRole(e.target.value as Role)}
+              className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
+            >
+              {ROLES.map((r) => (
+                <option key={r} value={r}>
+                  {r}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="bg-emerald-600 hover:bg-emerald-500 text-white font-semibold py-2 px-4 rounded-lg transition-colors disabled:opacity-50 h-[34px]"
+          >
+            {loading ? "Agregando..." : "+ Sumar al equipo"}
+          </button>
+        </form>
+      </AddFormToggle>
 
       {/* Lista de integrantes */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">

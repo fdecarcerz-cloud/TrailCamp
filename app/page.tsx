@@ -324,37 +324,40 @@ Se borrarán también su equipo, material, autos y gastos. Esto no se puede desh
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans">
       {/* Header */}
-      <header className="border-b border-slate-800 bg-slate-900/60 backdrop-blur-md px-6 py-4 flex items-center justify-between sticky top-0 z-40">
-        <div className="flex items-center gap-3">
+      <header className="border-b border-slate-800 bg-slate-900/60 backdrop-blur-md px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between gap-3 sticky top-0 z-40">
+        <div className="flex items-center gap-3 min-w-0">
           <div className="bg-emerald-500/20 text-emerald-400 p-2 rounded-xl text-lg font-black tracking-wider border border-emerald-500/30">
             TC
           </div>
           <div>
             <h1 className="text-base font-bold tracking-tight text-white flex items-center gap-2">
-              TrailCamp <span className="text-[10px] bg-emerald-950 text-emerald-400 border border-emerald-800 px-1.5 py-0.5 rounded-full font-mono">v1.0</span>
+              TrailCamp <span className="hidden sm:inline text-[10px] bg-emerald-950 text-emerald-400 border border-emerald-800 px-1.5 py-0.5 rounded-full font-mono">v1.0</span>
             </h1>
-            <p className="text-xs text-slate-400">Coordinador integral de expediciones</p>
+            <p className="hidden sm:block text-xs text-slate-400">Coordinador integral de expediciones</p>
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
           {currentUserEmail ? (
-            <div className="flex items-center gap-3 bg-slate-900 border border-slate-800 rounded-xl px-3 py-1.5">
-              <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></div>
-              <span className="text-xs text-slate-300 font-medium">{currentUserEmail}</span>
+            <div className="flex items-center gap-3 sm:bg-slate-900 sm:border sm:border-slate-800 rounded-xl sm:px-3 sm:py-1.5">
+              <div className="hidden sm:block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></div>
+              <span className="hidden sm:inline text-xs text-slate-300 font-medium">{currentUserEmail}</span>
               <button
                 onClick={handleSignOut}
-                className="text-[11px] bg-slate-800 hover:bg-rose-950 hover:text-rose-400 text-slate-400 px-2 py-1 rounded-md transition-colors"
+                className="text-[11px] bg-slate-800 hover:bg-rose-950 hover:text-rose-400 text-slate-400 px-2 py-1.5 sm:py-1 rounded-md transition-colors"
+                title={currentUserEmail}
               >
-                Cerrar sesión
+                <span className="sm:hidden">Salir</span>
+                <span className="hidden sm:inline">Cerrar sesión</span>
               </button>
             </div>
           ) : (
             <button
               onClick={() => setIsAuthModalOpen(true)}
-              className="text-xs bg-emerald-600 hover:bg-emerald-500 text-white font-semibold px-4 py-2 rounded-xl transition-all shadow-lg shadow-emerald-900/20"
+              className="text-xs bg-emerald-600 hover:bg-emerald-500 text-white font-semibold px-3 sm:px-4 py-2 rounded-xl transition-all shadow-lg shadow-emerald-900/20"
             >
-              Iniciar sesión / Registrarse
+              <span className="sm:hidden">Entrar</span>
+              <span className="hidden sm:inline">Iniciar sesión / Registrarse</span>
             </button>
           )}
 
@@ -367,17 +370,18 @@ Se borrarán también su equipo, material, autos y gastos. Esto no se puede desh
               }
               openNewTripModal();
             }}
-            className="text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-semibold px-3 py-2 rounded-xl transition-colors"
+            className="text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-semibold px-3 py-2 rounded-xl transition-colors whitespace-nowrap"
           >
-            + Nueva Expedición
+            <span className="sm:hidden">+ Nuevo viaje</span>
+            <span className="hidden sm:inline">+ Nueva Expedición</span>
           </button>
         </div>
       </header>
 
       {/* Main Grid */}
-      <div className="flex-1 max-w-7xl w-full mx-auto p-6 grid grid-cols-1 lg:grid-cols-4 gap-6">
+      <div className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 grid grid-cols-1 lg:grid-cols-4 gap-4 sm:gap-6">
         {/* Sidebar Viajes */}
-        <div className="lg:col-span-1 space-y-4">
+        <div className="lg:col-span-1 space-y-3 lg:space-y-4 min-w-0">
           <div className="flex items-center justify-between">
             <h2 className="text-xs font-bold text-slate-400 uppercase tracking-wider">
               Tus Expediciones ({trips.length})
@@ -394,14 +398,14 @@ Se borrarán también su equipo, material, autos y gastos. Esto no se puede desh
               <p className="text-[11px] text-slate-600">Crea una nueva o pide que te inviten con tu correo.</p>
             </div>
           ) : (
-            <div className="space-y-2">
+            <div className="flex gap-2 overflow-x-auto snap-x -mx-4 px-4 pb-1 sm:mx-0 sm:px-0 lg:block lg:space-y-2 lg:overflow-visible lg:pb-0">
               {trips.map((trip) => {
                 const isSelected = trip.id === selectedTripId;
                 return (
                   <button
                     key={trip.id}
                     onClick={() => setSelectedTripId(trip.id)}
-                    className={`w-full text-left p-3.5 rounded-xl border transition-all ${
+                    className={`shrink-0 w-[72%] sm:w-60 lg:w-full snap-start text-left p-3.5 rounded-xl border transition-all ${
                       isSelected
                         ? "bg-slate-800/90 border-emerald-500/50 shadow-lg shadow-emerald-950/20"
                         : "bg-slate-900/40 border-slate-800 hover:bg-slate-900/80 hover:border-slate-700"
@@ -424,14 +428,14 @@ Se borrarán también su equipo, material, autos y gastos. Esto no se puede desh
         </div>
 
         {/* Panel de detalles y pestañas */}
-        <div className="lg:col-span-3 space-y-6">
+        <div className="lg:col-span-3 space-y-4 sm:space-y-6 min-w-0">
           {selectedTrip ? (
             <>
-              <div className="bg-slate-900/60 border border-slate-800 p-5 rounded-2xl">
+              <div className="bg-slate-900/60 border border-slate-800 p-4 sm:p-5 rounded-2xl">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                   <div>
-                    <div className="flex items-center gap-2 mb-1">
-                      <h2 className="text-lg font-bold text-white">{selectedTrip.name}</h2>
+                    <div className="flex flex-wrap items-center gap-2 mb-1">
+                      <h2 className="text-base sm:text-lg font-bold text-white">{selectedTrip.name}</h2>
                       {selectedTrip.user_id === currentUserId && (
                         <>
                           <button
@@ -451,39 +455,45 @@ Se borrarán también su equipo, material, autos y gastos. Esto no se puede desh
                         </>
                       )}
                     </div>
-                    <div className="flex flex-wrap items-center gap-3 text-xs text-slate-400">
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-400">
                       <span className="text-emerald-400 font-medium">📍 {selectedTrip.destination}</span>
                       <span>•</span>
                       <span>📅 {formatDateRange(selectedTrip.start_date, selectedTrip.end_date)}</span>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs">
+                  <div className="grid grid-cols-4 md:flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs">
                     {(
                       [
-                        { id: "participants", label: `Equipo (${participants.length})` },
-                        { id: "gear", label: `Material (${gear.length})` },
-                        { id: "carpool", label: `Transporte (${carpools.length})` },
-                        { id: "expenses", label: "Gastos" },
+                        { id: "participants", label: "Equipo", short: "Equipo", count: participants.length },
+                        { id: "gear", label: "Material", short: "Material", count: gear.length },
+                        { id: "carpool", label: "Transporte", short: "Autos", count: carpools.length },
+                        { id: "expenses", label: "Gastos", short: "Gastos", count: null },
                       ] as const
                     ).map((tab) => (
                       <button
                         key={tab.id}
                         onClick={() => setActiveTab(tab.id)}
-                        className={`px-3 py-1.5 rounded-lg font-medium transition-all ${
+                        className={`px-1 sm:px-3 py-1.5 rounded-lg font-medium transition-all whitespace-nowrap ${
                           activeTab === tab.id
                             ? "bg-emerald-600 text-white shadow-sm"
                             : "text-slate-400 hover:text-white"
                         }`}
                       >
-                        {tab.label}
+                        <span className="sm:hidden">{tab.short}</span>
+                        <span className="hidden sm:inline">{tab.label}</span>
+                        {tab.count !== null && (
+                          <span className={`ml-1 text-[10px] ${activeTab === tab.id ? "text-emerald-100" : "text-slate-500"}`}>
+                            {tab.count}
+                          </span>
+                        )}
                       </button>
                     ))}
                   </div>
                 </div>
               </div>
 
-              <div className="bg-slate-900/40 border border-slate-800/80 p-5 rounded-2xl min-h-[400px]">
+              <div className="bg-slate-900/40 border border-slate-800/80 p-3 sm:p-5 rounded-2xl min-h-[400px]">
                 {activeTab === "participants" && (
                   <ParticipantsSection
                     tripId={selectedTrip.id}

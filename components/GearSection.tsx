@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { supabase } from "@/lib/supabase";
+import AddFormToggle from "@/components/AddFormToggle";
 import { GearItem, Participant } from "@/app/page";
 
 const PRIORITIES: GearItem["priority"][] = ["Imprescindible", "Importante", "Opcional"];
@@ -173,72 +174,74 @@ export default function GearSection({
       )}
 
       {/* Formulario nuevo material */}
-      <form
-        onSubmit={handleAddGear}
-        className="bg-slate-950/60 border border-slate-800 p-4 rounded-xl grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 items-end text-xs"
-      >
-        <div>
-          <label className="text-slate-400 block mb-1">Material / Equipo</label>
-          <input
-            type="text"
-            required
-            placeholder="Ej: Carpa 3 estaciones"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
-          />
-        </div>
-
-        <div>
-          <label className="text-slate-400 block mb-1">Importancia</label>
-          <select
-            value={priority}
-            onChange={(e) => setPriority(e.target.value as GearItem["priority"])}
-            className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
-          >
-            {PRIORITIES.map((p) => (
-              <option key={p} value={p}>
-                {p}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div>
-          <label className="text-slate-400 block mb-1">Cantidad</label>
-          <input
-            type="number"
-            min={1}
-            value={quantity}
-            onChange={(e) => setQuantity(Number(e.target.value))}
-            className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
-          />
-        </div>
-
-        <div>
-          <label className="text-slate-400 block mb-1">¿Quién lo lleva?</label>
-          <select
-            value={assignedTo}
-            onChange={(e) => setAssignedTo(e.target.value)}
-            className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
-          >
-            <option value="">Nadie todavía</option>
-            {participants.map((p) => (
-              <option key={p.id} value={p.name}>
-                {p.name}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <button
-          type="submit"
-          disabled={loading}
-          className="bg-emerald-600 hover:bg-emerald-500 text-white font-semibold py-2 px-4 rounded-lg transition-colors disabled:opacity-50 h-[34px]"
+      <AddFormToggle label="+ Agregar material">
+        <form
+          onSubmit={handleAddGear}
+          className="bg-slate-950/60 border border-slate-800 p-4 rounded-xl grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 items-end text-xs"
         >
-          {loading ? "Guardando..." : "+ Agregar ítem"}
-        </button>
-      </form>
+          <div>
+            <label className="text-slate-400 block mb-1">Material / Equipo</label>
+            <input
+              type="text"
+              required
+              placeholder="Ej: Carpa 3 estaciones"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
+            />
+          </div>
+
+          <div>
+            <label className="text-slate-400 block mb-1">Importancia</label>
+            <select
+              value={priority}
+              onChange={(e) => setPriority(e.target.value as GearItem["priority"])}
+              className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
+            >
+              {PRIORITIES.map((p) => (
+                <option key={p} value={p}>
+                  {p}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="text-slate-400 block mb-1">Cantidad</label>
+            <input
+              type="number"
+              min={1}
+              value={quantity}
+              onChange={(e) => setQuantity(Number(e.target.value))}
+              className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
+            />
+          </div>
+
+          <div>
+            <label className="text-slate-400 block mb-1">¿Quién lo lleva?</label>
+            <select
+              value={assignedTo}
+              onChange={(e) => setAssignedTo(e.target.value)}
+              className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
+            >
+              <option value="">Nadie todavía</option>
+              {participants.map((p) => (
+                <option key={p.id} value={p.name}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="bg-emerald-600 hover:bg-emerald-500 text-white font-semibold py-2 px-4 rounded-lg transition-colors disabled:opacity-50 h-[34px]"
+          >
+            {loading ? "Guardando..." : "+ Agregar ítem"}
+          </button>
+        </form>
+      </AddFormToggle>
 
       {/* Lista de material */}
       <div className="space-y-2">
@@ -341,7 +344,7 @@ export default function GearSection({
                       : "bg-slate-900/70 border-slate-800 text-slate-200"
                 }`}
               >
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 min-w-0">
                   <button
                     onClick={() => handleToggleStatus(item)}
                     className="flex flex-col items-center gap-0.5 group"
@@ -367,7 +370,7 @@ export default function GearSection({
                     <span className="text-[10px] text-slate-400 ml-2 font-mono">
                       (x{item.quantity})
                     </span>
-                    <div className="flex items-center gap-2 mt-1">
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-1">
                       <span
                         className={`text-[10px] px-1.5 py-0.5 rounded border ${
                           PRIORITY_STYLES[item.priority] ?? PRIORITY_STYLES.Opcional
@@ -397,7 +400,7 @@ export default function GearSection({
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 shrink-0">
                   <button
                     onClick={() => startEditing(item)}
                     className="text-slate-400 hover:text-slate-200 text-xs px-1"

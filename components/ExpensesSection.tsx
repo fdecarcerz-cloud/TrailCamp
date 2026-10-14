@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { supabase } from "@/lib/supabase";
+import AddFormToggle from "@/components/AddFormToggle";
 import { Expense, Participant } from "@/app/page";
 
 interface ExpensesSectionProps {
@@ -305,14 +306,14 @@ export default function ExpensesSection({
               {transfers.map((t, idx) => (
                 <div
                   key={idx}
-                  className="text-xs flex items-center justify-between bg-slate-900/80 border border-slate-800 px-3 py-1.5 rounded-lg"
+                  className="text-xs flex items-center justify-between gap-2 bg-slate-900/80 border border-slate-800 px-3 py-1.5 rounded-lg"
                 >
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 min-w-0">
                     <span className="text-rose-400 font-medium">{t.from}</span>
-                    <span className="text-slate-500">le transfiere a</span>
+                    <span className="text-slate-500 whitespace-nowrap">le transfiere a</span>
                     <span className="text-emerald-400 font-medium">{t.to}</span>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 shrink-0">
                     <span className="font-mono font-bold text-white">
                       ${t.amount.toLocaleString("es-CL")}
                     </span>
@@ -367,105 +368,107 @@ export default function ExpensesSection({
       )}
 
       {/* Formulario nuevo gasto */}
-      <form
-        onSubmit={handleAddExpense}
-        className="bg-slate-950/60 border border-slate-800 p-4 rounded-xl space-y-4 text-xs"
-      >
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <div>
-            <label className="text-slate-400 block mb-1">Descripción</label>
-            <input
-              type="text"
-              required
-              placeholder="Ej: Bencina, Supermercado"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
-            />
-          </div>
-
-          <div>
-            <label className="text-slate-400 block mb-1">Monto ($)</label>
-            <input
-              type="number"
-              required
-              min={1}
-              placeholder="Ej: 30000"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value === "" ? "" : Number(e.target.value))}
-              className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
-            />
-          </div>
-
-          <div>
-            <label className="text-slate-400 block mb-1">¿Quién pagó?</label>
-            <select
-              required
-              value={paidBy}
-              onChange={(e) => setPaidBy(e.target.value)}
-              className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
-            >
-              <option value="">Seleccionar pagador...</option>
-              {participants.map((p) => (
-                <option key={p.id} value={p.name}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        <div>
-          <div className="flex items-center justify-between mb-2">
-            <label className="text-slate-400">Dividir entre (por defecto todos):</label>
-            {participants.length > 0 && (
-              <button
-                type="button"
-                onClick={() => handleSelectAll(false)}
-                className="text-[10px] text-emerald-400 hover:text-emerald-300 underline"
-              >
-                {selectedParticipants.length === participants.length
-                  ? "Deseleccionar todos"
-                  : "Seleccionar todos"}
-              </button>
-            )}
-          </div>
-
-          <div className="flex flex-wrap gap-1.5">
-            {participants.length === 0 ? (
-              <span className="text-slate-600 text-[11px] italic">
-                Agrega integrantes en "Equipo" para poder dividir gastos.
-              </span>
-            ) : (
-              participants.map((p) => {
-                const isSelected = selectedParticipants.includes(p.name);
-                return (
-                  <button
-                    key={p.id}
-                    type="button"
-                    onClick={() => handleToggleSplitUser(p.name, false)}
-                    className={`text-[11px] px-2.5 py-1 rounded-lg border transition-colors ${
-                      isSelected
-                        ? "bg-emerald-900/60 border-emerald-600 text-emerald-300 font-medium"
-                        : "bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-700"
-                    }`}
-                  >
-                    {isSelected ? `✓ ${p.name}` : p.name}
-                  </button>
-                );
-              })
-            )}
-          </div>
-        </div>
-
-        <button
-          type="submit"
-          disabled={loading || participants.length === 0}
-          className="bg-emerald-600 hover:bg-emerald-500 text-white font-semibold py-2 px-4 rounded-lg transition-colors disabled:opacity-50"
+      <AddFormToggle label="+ Registrar gasto">
+        <form
+          onSubmit={handleAddExpense}
+          className="bg-slate-950/60 border border-slate-800 p-4 rounded-xl space-y-4 text-xs"
         >
-          {loading ? "Guardando..." : "+ Registrar Gasto"}
-        </button>
-      </form>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label className="text-slate-400 block mb-1">Descripción</label>
+              <input
+                type="text"
+                required
+                placeholder="Ej: Bencina, Supermercado"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
+              />
+            </div>
+
+            <div>
+              <label className="text-slate-400 block mb-1">Monto ($)</label>
+              <input
+                type="number"
+                required
+                min={1}
+                placeholder="Ej: 30000"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value === "" ? "" : Number(e.target.value))}
+                className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
+              />
+            </div>
+
+            <div>
+              <label className="text-slate-400 block mb-1">¿Quién pagó?</label>
+              <select
+                required
+                value={paidBy}
+                onChange={(e) => setPaidBy(e.target.value)}
+                className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
+              >
+                <option value="">Seleccionar pagador...</option>
+                {participants.map((p) => (
+                  <option key={p.id} value={p.name}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-slate-400">Dividir entre (por defecto todos):</label>
+              {participants.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => handleSelectAll(false)}
+                  className="text-[10px] text-emerald-400 hover:text-emerald-300 underline"
+                >
+                  {selectedParticipants.length === participants.length
+                    ? "Deseleccionar todos"
+                    : "Seleccionar todos"}
+                </button>
+              )}
+            </div>
+
+            <div className="flex flex-wrap gap-1.5">
+              {participants.length === 0 ? (
+                <span className="text-slate-600 text-[11px] italic">
+                  Agrega integrantes en "Equipo" para poder dividir gastos.
+                </span>
+              ) : (
+                participants.map((p) => {
+                  const isSelected = selectedParticipants.includes(p.name);
+                  return (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => handleToggleSplitUser(p.name, false)}
+                      className={`text-[11px] px-2.5 py-1 rounded-lg border transition-colors ${
+                        isSelected
+                          ? "bg-emerald-900/60 border-emerald-600 text-emerald-300 font-medium"
+                          : "bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-700"
+                      }`}
+                    >
+                      {isSelected ? `✓ ${p.name}` : p.name}
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          </div>
+
+          <button
+            type="submit"
+            disabled={loading || participants.length === 0}
+            className="bg-emerald-600 hover:bg-emerald-500 text-white font-semibold py-2 px-4 rounded-lg transition-colors disabled:opacity-50"
+          >
+            {loading ? "Guardando..." : "+ Registrar Gasto"}
+          </button>
+        </form>
+      </AddFormToggle>
 
       {/* Historial de gastos con edición */}
       <div className="space-y-2">
@@ -581,12 +584,12 @@ export default function ExpensesSection({
             return (
               <div
                 key={exp.id}
-                className="bg-slate-900/60 border border-slate-800 p-3.5 rounded-xl flex items-center justify-between"
+                className="bg-slate-900/60 border border-slate-800 p-3.5 rounded-xl flex items-center justify-between gap-3"
               >
-                <div>
-                  <div className="text-xs font-semibold text-white flex items-center gap-2">
+                <div className="min-w-0">
+                  <div className="text-xs font-semibold text-white flex flex-wrap items-center gap-x-2 gap-y-1">
                     {exp.description}
-                    <span className="text-[10px] bg-slate-800 text-slate-300 px-1.5 py-0.5 rounded border border-slate-700">
+                    <span className="text-[10px] bg-slate-800 text-slate-300 px-1.5 py-0.5 rounded border border-slate-700 whitespace-nowrap">
                       Pagó {exp.paid_by}
                     </span>
                   </div>
@@ -595,7 +598,7 @@ export default function ExpensesSection({
                   </div>
                 </div>
 
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 shrink-0">
                   <span className="font-mono text-sm font-bold text-emerald-400">
                     ${exp.amount.toLocaleString("es-CL")}
                   </span>
