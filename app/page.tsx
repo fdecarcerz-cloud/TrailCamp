@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
+import { formatDateRange } from "@/lib/dates";
 import AuthModal from "@/components/AuthModal";
 import ParticipantsSection from "@/components/ParticipantsSection";
 import GearSection from "@/components/GearSection";
@@ -55,6 +56,7 @@ export interface Expense {
   amount: number;
   paid_by: string;
   split_between: string[];
+  is_settlement?: boolean;
 }
 
 export default function Home() {
@@ -407,8 +409,8 @@ Se borrarán también su equipo, material, autos y gastos. Esto no se puede desh
                     <div className="text-[11px] text-emerald-400 font-medium flex items-center gap-1 mb-1 truncate">
                       📍 {trip.destination}
                     </div>
-                    <div className="text-[10px] text-slate-400 font-mono">
-                      {trip.start_date} → {trip.end_date}
+                    <div className="text-[10px] text-slate-400">
+                      {formatDateRange(trip.start_date, trip.end_date)}
                     </div>
                   </button>
                 );
@@ -448,7 +450,7 @@ Se borrarán también su equipo, material, autos y gastos. Esto no se puede desh
                     <div className="flex flex-wrap items-center gap-3 text-xs text-slate-400">
                       <span className="text-emerald-400 font-medium">📍 {selectedTrip.destination}</span>
                       <span>•</span>
-                      <span className="font-mono">📅 {selectedTrip.start_date} al {selectedTrip.end_date}</span>
+                      <span>📅 {formatDateRange(selectedTrip.start_date, selectedTrip.end_date)}</span>
                     </div>
                   </div>
 

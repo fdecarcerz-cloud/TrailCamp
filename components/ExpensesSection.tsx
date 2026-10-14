@@ -44,7 +44,11 @@ export default function ExpensesSection({
     amount: Number(e.amount) || 0,
   }));
 
-  const totalSpent = safeExpenses.reduce((sum, item) => sum + item.amount, 0);
+  // Los pagos entre personas cuentan para los balances, pero no son gasto del viaje
+  const realExpenses = safeExpenses.filter((e) => !e.is_settlement);
+  const settlements = safeExpenses.filter((e) => e.is_settlement);
+
+  const totalSpent = realExpenses.reduce((sum, item) => sum + item.amount, 0);
 
   // Cálculo de balances netos
   const balances: { [name: string]: number } = {};
@@ -224,6 +228,47 @@ export default function ExpensesSection({
     }
   };
 
+  const [savingTransfer, setSavingTransfer] = useState<string | null>(null);
+
+  const handleMarkPaid = async (t: Transfer) => {
+    const ok = confirm(
+      `¿Confirmas que ${t.from} ya le pagó ${t.amount.toLocaleString("es-CL")} a ${t.to}?`
+    );
+    if (!ok) return;
+
+    const key = `${t.from}->${t.to}`;
+    setSavingTransfer(key);
+    try {
+      const { error } = await supabase.from("expenses").insert([
+        {
+          trip_id: tripId,
+          description: `Pago de ${t.from} a ${t.to}`,
+          amount: t.amount,
+          paid_by: t.from,
+          split_between: [t.to],
+          is_settlement: true,
+        },
+      ]);
+      if (error) throw error;
+      onRefresh();
+    } catch (err: any) {
+      alert("Error registrando el pago: " + err.message);
+    } finally {
+      setSavingTransfer(null);
+    }
+  };
+
+  const handleUndoSettlement = async (exp: Expense) => {
+    if (!confirm(`¿Deshacer "${exp.description}"? La deuda volverá a aparecer.`)) return;
+    try {
+      const { error } = await supabase.from("expenses").delete().eq("id", exp.id);
+      if (error) throw error;
+      onRefresh();
+    } catch (err: any) {
+      alert("Error deshaciendo el pago: " + err.message);
+    }
+  };
+
   const handleDeleteExpense = async (id: string) => {
     if (!confirm("¿Deseas eliminar este gasto?")) return;
     try {
@@ -244,7 +289,7 @@ export default function ExpensesSection({
           <h3 className="text-xl font-black text-emerald-400 font-mono mt-1">
             ${totalSpent.toLocaleString("es-CL")}
           </h3>
-          <span className="text-[10px] text-slate-500">{safeExpenses.length} gastos ingresados</span>
+          <span className="text-[10px] text-slate-500">{realExpenses.length} gastos ingresados</span>
         </div>
 
         <div className="md:col-span-2 bg-slate-950/60 border border-slate-800 p-4 rounded-xl">
@@ -267,9 +312,19 @@ export default function ExpensesSection({
                     <span className="text-slate-500">le transfiere a</span>
                     <span className="text-emerald-400 font-medium">{t.to}</span>
                   </div>
-                  <span className="font-mono font-bold text-white">
-                    ${t.amount.toLocaleString("es-CL")}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono font-bold text-white">
+                      ${t.amount.toLocaleString("es-CL")}
+                    </span>
+                    <button
+                      onClick={() => handleMarkPaid(t)}
+                      disabled={savingTransfer === `${t.from}->${t.to}`}
+                      className="text-[10px] bg-emerald-900/60 hover:bg-emerald-700 text-emerald-300 hover:text-white border border-emerald-800 px-2 py-0.5 rounded-md transition-colors disabled:opacity-50"
+                      title="Registrar que esta transferencia ya se hizo"
+                    >
+                      {savingTransfer === `${t.from}->${t.to}` ? "Guardando..." : "✓ Ya pagó"}
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -414,12 +469,12 @@ export default function ExpensesSection({
 
       {/* Historial de gastos con edición */}
       <div className="space-y-2">
-        {safeExpenses.length === 0 ? (
+        {realExpenses.length === 0 ? (
           <div className="text-center text-xs text-slate-500 py-8 border border-dashed border-slate-800 rounded-xl">
             Aún no hay gastos registrados en este viaje.
           </div>
         ) : (
-          safeExpenses.map((exp) => {
+          realExpenses.map((exp) => {
             const splitCount = exp.split_between.length || 1;
             const perPerson = Math.round(exp.amount / splitCount);
             const isEditing = editingId === exp.id;
@@ -564,6 +619,35 @@ export default function ExpensesSection({
           })
         )}
       </div>
+
+      {settlements.length > 0 && (
+        <div className="space-y-2">
+          <span className="text-xs text-slate-400 font-medium block">Pagos realizados</span>
+          {settlements.map((exp) => (
+            <div
+              key={exp.id}
+              className="bg-slate-900/30 border border-emerald-900/50 px-3.5 py-2 rounded-xl flex items-center justify-between text-xs"
+            >
+              <span className="text-slate-300">
+                ✓ <span className="text-slate-200 font-medium">{exp.paid_by}</span> le pagó a{" "}
+                <span className="text-slate-200 font-medium">{exp.split_between[0]}</span>
+              </span>
+              <div className="flex items-center gap-3">
+                <span className="font-mono font-semibold text-emerald-500">
+                  ${exp.amount.toLocaleString("es-CL")}
+                </span>
+                <button
+                  onClick={() => handleUndoSettlement(exp)}
+                  className="text-[10px] text-slate-500 hover:text-rose-400"
+                  title="Deshacer este pago"
+                >
+                  Deshacer
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

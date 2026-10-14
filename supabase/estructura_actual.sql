@@ -1,5 +1,5 @@
 -- Copia completa de la estructura de la base de datos de Supabase (schema public).
--- Foto tomada el 2026-10-14, después de aplicar migrations/20261014150000_gear_columnas_de_la_app.sql.
+-- Foto tomada el 2026-10-14, después de aplicar migrations/20261014170000_expenses_pagos.sql.
 -- Sirve para recrear la base de datos desde cero en un proyecto vacío (SQL Editor -> pegar -> Run).
 -- No contiene datos (viajes, gastos, etc.), solo la estructura.
 -- Actualizar este archivo cada vez que se cambie la base de datos.
@@ -27,7 +27,8 @@ create table if not exists public.expenses (
   paid_by text,
   included_members text[],
   created_at timestamp with time zone default timezone('utc'::text, now()),
-  split_between text[] default '{}'::text[]
+  split_between text[] default '{}'::text[],
+  is_settlement boolean default false not null
 );
 
 create table if not exists public.gear (
