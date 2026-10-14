@@ -13,6 +13,10 @@ interface ParticipantsSectionProps {
   participants: Participant[];
   // Solo el creador del viaje puede editar o borrar (lo exige también RLS en Supabase)
   isCreator: boolean;
+  // Para armar el mensaje de invitación
+  tripName: string;
+  tripDetails: string;
+  myName: string | null;
   onRefresh: () => void;
 }
 
@@ -26,8 +30,38 @@ export default function ParticipantsSection({
   tripId,
   participants,
   isCreator,
+  tripName,
+  tripDetails,
+  myName,
   onRefresh,
 }: ParticipantsSectionProps) {
+  // Invitación por persona: incluye el correo exacto con que debe crear su cuenta
+  const [invitingId, setInvitingId] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  const inviteMessage = (p: Participant) => {
+    const url = typeof window !== "undefined" ? window.location.origin : "https://trail-camp.vercel.app";
+    return [
+      `¡Hola ${p.name}! Te sumé al viaje "${tripName}"${tripDetails ? ` (${tripDetails})` : ""} en TrailCamp, donde organizamos el material, los autos y los gastos.`,
+      "",
+      `1. Entra a ${url}`,
+      `2. Crea tu cuenta (o inicia sesión) con este correo: ${p.email}`,
+      "3. Vas a ver el viaje en tu lista.",
+      "",
+      "Importante: usa ese mismo correo, si no, no te va a aparecer el viaje.",
+    ].join("\n");
+  };
+
+  const handleCopyInvite = async (p: Participant) => {
+    try {
+      await navigator.clipboard.writeText(inviteMessage(p));
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      alert("No se pudo copiar. Mantén apretado el texto para copiarlo a mano.");
+    }
+  };
+
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<Role>("Participante");
@@ -255,10 +289,8 @@ export default function ParticipantsSection({
             }
 
             return (
-              <div
-                key={p.id}
-                className="bg-slate-900/60 border border-slate-800 p-3 rounded-xl flex items-center justify-between gap-2"
-              >
+              <div key={p.id} className="bg-slate-900/60 border border-slate-800 p-3 rounded-xl space-y-2">
+              <div className="flex items-center justify-between gap-2">
                 <div className="min-w-0">
                   <div className="text-xs font-semibold text-white flex items-center gap-2">
                     <span className="truncate">{p.name}</span>
@@ -292,6 +324,47 @@ export default function ParticipantsSection({
                     </button>
                   </div>
                 )}
+              </div>
+
+              {p.email && p.name !== myName && invitingId !== p.id && (
+                <button
+                  onClick={() => {
+                    setInvitingId(p.id);
+                    setCopied(false);
+                  }}
+                  className="text-[11px] text-emerald-400 hover:text-emerald-300"
+                >
+                  📲 Invitar a {p.name}
+                </button>
+              )}
+
+              {invitingId === p.id && p.email && (
+                <div className="bg-slate-950 border border-slate-800 rounded-lg p-2.5 space-y-2">
+                  <p className="text-[11px] text-slate-300 whitespace-pre-line select-all">{inviteMessage(p)}</p>
+                  <div className="flex flex-wrap gap-2">
+                    <a
+                      href={`https://wa.me/?text=${encodeURIComponent(inviteMessage(p))}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[11px] font-semibold bg-emerald-600 hover:bg-emerald-500 text-white px-2.5 py-1 rounded-md"
+                    >
+                      Enviar por WhatsApp
+                    </a>
+                    <button
+                      onClick={() => handleCopyInvite(p)}
+                      className="text-[11px] font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 px-2.5 py-1 rounded-md"
+                    >
+                      {copied ? "✓ Copiado" : "📋 Copiar mensaje"}
+                    </button>
+                    <button
+                      onClick={() => setInvitingId(null)}
+                      className="text-[11px] text-slate-500 hover:text-slate-300 px-1"
+                    >
+                      Cerrar
+                    </button>
+                  </div>
+                </div>
+              )}
               </div>
             );
           })

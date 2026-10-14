@@ -506,6 +506,9 @@ Se borrarán también su equipo, material, autos y gastos. Esto no se puede desh
                     tripId={selectedTrip.id}
                     participants={participants}
                     isCreator={selectedTrip.user_id === currentUserId}
+                    tripName={selectedTrip.name}
+                    tripDetails={[formatDateRange(selectedTrip.start_date, selectedTrip.end_date), selectedTrip.destination].filter(Boolean).join(", ")}
+                    myName={myName}
                     onRefresh={() => fetchTripDetails(selectedTrip.id)}
                   />
                 )}
