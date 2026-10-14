@@ -5,6 +5,7 @@ import { supabase } from "@/lib/supabase";
 import { formatDateRange } from "@/lib/dates";
 import AuthModal from "@/components/AuthModal";
 import NewPasswordModal from "@/components/NewPasswordModal";
+import TripNotes from "@/components/TripNotes";
 import ParticipantsSection from "@/components/ParticipantsSection";
 import GearSection from "@/components/GearSection";
 import CarpoolSection from "@/components/CarpoolSection";
@@ -497,6 +498,15 @@ Se borrarán también su equipo, material, autos y gastos. Esto no se puede desh
                       </button>
                     ))}
                   </div>
+                </div>
+
+                <div className="mt-3">
+                  <TripNotes
+                    key={selectedTrip.id}
+                    tripId={selectedTrip.id}
+                    notes={selectedTrip.description}
+                    onSaved={fetchTrips}
+                  />
                 </div>
               </div>
 

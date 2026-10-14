@@ -1,5 +1,5 @@
 -- Copia completa de la estructura de la base de datos de Supabase (schema public).
--- Foto tomada el 2026-10-14, después de aplicar migrations/20261014210000_transporte_conductor.sql.
+-- Foto tomada el 2026-10-14, después de aplicar migrations/20261014230000_notas_del_viaje.sql.
 -- Sirve para recrear la base de datos desde cero en un proyecto vacío (SQL Editor -> pegar -> Run).
 -- No contiene datos (viajes, gastos, etc.), solo la estructura.
 -- Actualizar este archivo cada vez que se cambie la base de datos.
@@ -142,6 +142,27 @@ AS $function$
     select 1 from public.trips t
     where t.id = viaje_id and t.user_id = (select auth.uid())
   );
+$function$
+;
+
+CREATE OR REPLACE FUNCTION public.guardar_notas_viaje(p_viaje bigint, p_notas text)
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+begin
+  if not public.puede_ver_viaje(p_viaje) then
+    raise exception 'No tienes acceso a este viaje.';
+  end if;
+  if length(coalesce(p_notas, '')) > 5000 then
+    raise exception 'Las notas pueden tener como máximo 5.000 caracteres.';
+  end if;
+
+  update public.trips
+  set description = nullif(btrim(coalesce(p_notas, '')), '')
+  where id = p_viaje;
+end;
 $function$
 ;
 
@@ -303,3 +324,5 @@ revoke execute on function public.renombrar_participante(bigint, text, text, tex
 grant execute on function public.renombrar_participante(bigint, text, text, text) to authenticated;
 revoke execute on function public.borrar_participante(bigint) from public, anon;
 grant execute on function public.borrar_participante(bigint) to authenticated;
+revoke execute on function public.guardar_notas_viaje(bigint, text) from public, anon;
+grant execute on function public.guardar_notas_viaje(bigint, text) to authenticated;
