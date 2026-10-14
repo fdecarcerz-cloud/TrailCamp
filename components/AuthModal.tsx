@@ -21,6 +21,14 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg("");
+
+    // Mismas reglas que Supabase (Auth → contraseña), para mostrar el error en español.
+    // Solo al crear cuenta: cuentas antiguas pueden tener contraseñas de 6 caracteres.
+    if (isSignUp && (password.length < 8 || !/[a-zA-Z]/.test(password) || !/\d/.test(password))) {
+      setErrorMsg("La contraseña debe tener al menos 8 caracteres, con letras y números.");
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -95,10 +103,10 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
             <input
               type="password"
               required
-              minLength={6}
+              minLength={isSignUp ? 8 : undefined}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="Mínimo 6 caracteres"
+              placeholder={isSignUp ? "Mínimo 8 caracteres, con letras y números" : "Tu contraseña"}
               className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500"
             />
           </div>
