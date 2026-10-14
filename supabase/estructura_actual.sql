@@ -1,5 +1,5 @@
 -- Copia completa de la estructura de la base de datos de Supabase (schema public).
--- Foto tomada el 2026-10-14, después de aplicar migrations/20261014190000_equipo_editar_y_borrar_seguro.sql.
+-- Foto tomada el 2026-10-14, después de aplicar migrations/20261014210000_transporte_conductor.sql.
 -- Sirve para recrear la base de datos desde cero en un proyecto vacío (SQL Editor -> pegar -> Run).
 -- No contiene datos (viajes, gastos, etc.), solo la estructura.
 -- Actualizar este archivo cada vez que se cambie la base de datos.
@@ -115,6 +115,10 @@ begin
       case when v_gastos = 1 then '1 gasto o pago' else v_gastos || ' gastos o pagos' end;
   end if;
 
+  if exists (select 1 from public.carpools where trip_id = v_viaje and driver_name = v_nombre) then
+    raise exception '% maneja un auto en este viaje. Cambia el conductor o borra ese auto primero.', v_nombre;
+  end if;
+
   update public.gear
   set assigned_to = null,
       status = case when status = 'Asignado' then 'Pendiente' else status end
@@ -189,6 +193,9 @@ begin
   if v_viejo is distinct from v_nuevo then
     update public.gear set assigned_to = v_nuevo
     where trip_id = v_viaje and assigned_to = v_viejo;
+
+    update public.carpools set driver_name = v_nuevo
+    where trip_id = v_viaje and driver_name = v_viejo;
 
     update public.carpools set passengers = array_replace(passengers, v_viejo, v_nuevo)
     where trip_id = v_viaje and v_viejo = any(passengers);
@@ -288,7 +295,6 @@ create policy "Ver mis viajes o donde participo" on public.trips as PERMISSIVE f
   using (((auth.uid() = user_id) OR (id IN ( SELECT participants.trip_id
    FROM participants
   WHERE (participants.email = (auth.jwt() ->> 'email'::text))))));
-
 revoke execute on function public.puede_ver_viaje(bigint) from public, anon;
 grant execute on function public.puede_ver_viaje(bigint) to authenticated;
 revoke execute on function public.es_creador_viaje(bigint) from public, anon;

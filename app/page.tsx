@@ -44,6 +44,7 @@ export interface Carpool {
   id: string;
   trip_id: string;
   driver_name: string;
+  car?: string | null;
   departure_location: string;
   departure_time: string;
   seats_available: number;
@@ -321,6 +322,12 @@ Se borrarán también su equipo, material, autos y gastos. Esto no se puede desh
 
   const selectedTrip = trips.find((t) => t.id === selectedTripId);
 
+  // Quién es el usuario dentro del equipo del viaje (se reconoce por su email)
+  const myName =
+    participants.find(
+      (p) => !!currentUserEmail && p.email?.toLowerCase() === currentUserEmail.toLowerCase()
+    )?.name ?? null;
+
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans">
       {/* Header */}
@@ -507,11 +514,7 @@ Se borrarán también su equipo, material, autos y gastos. Esto no se puede desh
                     tripId={selectedTrip.id}
                     gear={gear}
                     participants={participants}
-                    myName={
-                      participants.find(
-                        (p) => !!currentUserEmail && p.email?.toLowerCase() === currentUserEmail.toLowerCase()
-                      )?.name ?? null
-                    }
+                    myName={myName}
                     onRefresh={() => fetchTripDetails(selectedTrip.id)}
                   />
                 )}
@@ -520,6 +523,7 @@ Se borrarán también su equipo, material, autos y gastos. Esto no se puede desh
                     tripId={selectedTrip.id}
                     carpools={carpools}
                     participants={participants}
+                    myName={myName}
                     onRefresh={() => fetchTripDetails(selectedTrip.id)}
                   />
                 )}
