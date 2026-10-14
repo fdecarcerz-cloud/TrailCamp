@@ -22,6 +22,8 @@ interface GearSectionProps {
   tripId: string;
   gear: GearItem[];
   participants: Participant[];
+  // Nombre del participante cuyo email coincide con la sesión (null si no está en el equipo)
+  myName: string | null;
   onRefresh: () => void;
 }
 
@@ -29,6 +31,7 @@ export default function GearSection({
   tripId,
   gear = [],
   participants = [],
+  myName,
   onRefresh,
 }: GearSectionProps) {
   const [name, setName] = useState("");
@@ -126,6 +129,21 @@ export default function GearSection({
     }
   };
 
+  // "Yo lo llevo" / "Ya no lo llevo": solo se ofrece en ítems sin empacar
+  const handleClaim = async (item: GearItem, claim: boolean) => {
+    if (!myName) return;
+    try {
+      const { error } = await supabase
+        .from("gear")
+        .update({ assigned_to: claim ? myName : null, status: claim ? "Asignado" : "Pendiente" })
+        .eq("id", item.id);
+      if (error) throw error;
+      onRefresh();
+    } catch (err: any) {
+      alert("No se pudo guardar: " + (err?.message || "Error desconocido"));
+    }
+  };
+
   const handleDeleteGear = async (id: string) => {
     if (!confirm("¿Deseas eliminar este ítem de la lista?")) return;
     try {
@@ -170,6 +188,12 @@ export default function GearSection({
       {criticalPending.length > 0 && (
         <div className="bg-rose-950/40 border border-rose-800/70 text-rose-200 text-xs px-4 py-3 rounded-xl">
           ⚠️ {alertParts.join(" · ")}
+        </div>
+      )}
+
+      {!myName && gear.some((item) => !item.assigned_to && item.status !== "Empacado") && (
+        <div className="bg-slate-900/60 border border-slate-800 text-slate-400 text-[11px] px-4 py-2.5 rounded-xl">
+          💡 Para anotarte con &quot;Yo lo llevo&quot;, agrega tu correo a tu nombre en la pestaña Equipo.
         </div>
       )}
 
@@ -383,18 +407,39 @@ export default function GearSection({
                         <span className="text-[10px] text-emerald-500">
                           ✓ Empacado{item.assigned_to && ` · ${item.assigned_to}`}
                         </span>
+                      ) : item.assigned_to && item.assigned_to === myName ? (
+                        <span className="text-[10px] text-slate-300">
+                          👤 <span className="text-emerald-300 font-medium">Lo llevas tú</span> ·{" "}
+                          <span className="text-amber-400">falta empacar</span>
+                          <button
+                            onClick={() => handleClaim(item, false)}
+                            className="ml-2 text-slate-500 hover:text-rose-400 underline"
+                          >
+                            Ya no lo llevo
+                          </button>
+                        </span>
                       ) : item.assigned_to ? (
                         <span className="text-[10px] text-slate-300">
                           👤 Lo lleva {item.assigned_to} · <span className="text-amber-400">falta empacar</span>
                         </span>
                       ) : (
-                        <span
-                          className={`text-[10px] font-medium ${
-                            item.priority === "Imprescindible" ? "text-rose-400" : "text-amber-400"
-                          }`}
-                        >
-                          ⚠️ Nadie lo lleva todavía
-                        </span>
+                        <>
+                          <span
+                            className={`text-[10px] font-medium ${
+                              item.priority === "Imprescindible" ? "text-rose-400" : "text-amber-400"
+                            }`}
+                          >
+                            ⚠️ Nadie lo lleva todavía
+                          </span>
+                          {myName && (
+                            <button
+                              onClick={() => handleClaim(item, true)}
+                              className="text-[10px] font-semibold bg-emerald-600 hover:bg-emerald-500 text-white px-2 py-0.5 rounded-md transition-colors"
+                            >
+                              🙋 Yo lo llevo
+                            </button>
+                          )}
+                        </>
                       )}
                     </div>
                   </div>

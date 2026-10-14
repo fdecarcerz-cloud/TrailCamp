@@ -507,6 +507,11 @@ Se borrarán también su equipo, material, autos y gastos. Esto no se puede desh
                     tripId={selectedTrip.id}
                     gear={gear}
                     participants={participants}
+                    myName={
+                      participants.find(
+                        (p) => !!currentUserEmail && p.email?.toLowerCase() === currentUserEmail.toLowerCase()
+                      )?.name ?? null
+                    }
                     onRefresh={() => fetchTripDetails(selectedTrip.id)}
                   />
                 )}
