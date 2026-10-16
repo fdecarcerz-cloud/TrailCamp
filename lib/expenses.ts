@@ -150,6 +150,36 @@ export function computeTransfers(people: PersonSummary[]): Transfer[] {
   return transfers;
 }
 
+// Mensaje para mandar al grupo de WhatsApp con el estado de las cuentas
+export function buildSummaryMessage(opts: {
+  tripName: string;
+  totalSpent: number;
+  expenseCount: number;
+  people: PersonSummary[];
+  transfers: Transfer[];
+  url: string;
+}): string {
+  const { tripName, totalSpent, expenseCount, people, transfers, url } = opts;
+  const lines = [
+    `💸 Cuentas de "${tripName}"`,
+    `Total gastado: ${clp(totalSpent)} (${expenseCount} ${expenseCount === 1 ? "gasto" : "gastos"})`,
+    "",
+  ];
+  if (transfers.length === 0) {
+    lines.push("✅ Estamos todos a mano.");
+  } else {
+    lines.push("Para quedar a mano:");
+    transfers.forEach((t) => lines.push(`• ${t.from} → ${t.to}: ${clp(t.amount)}`));
+  }
+  const withMovement = people.filter((p) => p.paid > 0 || p.consumed > 0);
+  if (withMovement.length > 0) {
+    lines.push("", "Cuánto puso y cuánto le tocaba a cada uno:");
+    withMovement.forEach((p) => lines.push(`• ${p.name}: puso ${clp(p.paid)}, le tocaba ${clp(p.consumed)}`));
+  }
+  lines.push("", `Detalle en ${url}`);
+  return lines.join("\n");
+}
+
 export const clp = (n: number) => {
   const r = Math.round(n);
   return (r < 0 ? "-$" : "$") + Math.abs(r).toLocaleString("es-CL");

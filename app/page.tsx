@@ -552,6 +552,7 @@ Se borrarán también su equipo, material, autos y gastos. Esto no se puede desh
                     expenses={expenses}
                     participants={participants}
                     myName={myName}
+                    tripName={selectedTrip.name}
                     onRefresh={() => fetchTripDetails(selectedTrip.id)}
                   />
                 )}

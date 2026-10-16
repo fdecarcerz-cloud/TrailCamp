@@ -6,7 +6,16 @@ import AddFormToggle from "@/components/AddFormToggle";
 import ExpenseForm, { type ExpenseDraft } from "@/components/expenses/ExpenseForm";
 import { CategoryChart, PeopleChart } from "@/components/expenses/ExpenseCharts";
 import { Expense, Participant } from "@/app/page";
-import { CATEGORY_INFO, type Transfer, categoryOf, clp, computeTransfers, sharesOf, summarize } from "@/lib/expenses";
+import {
+  CATEGORY_INFO,
+  type Transfer,
+  buildSummaryMessage,
+  categoryOf,
+  clp,
+  computeTransfers,
+  sharesOf,
+  summarize,
+} from "@/lib/expenses";
 
 interface ExpensesSectionProps {
   tripId: string;
@@ -14,6 +23,7 @@ interface ExpensesSectionProps {
   participants: Participant[];
   // Nombre del participante cuyo email coincide con la sesión (null si no está en el equipo)
   myName: string | null;
+  tripName: string;
   onRefresh: () => void;
 }
 
@@ -33,6 +43,7 @@ export default function ExpensesSection({
   expenses = [],
   participants = [],
   myName,
+  tripName,
   onRefresh,
 }: ExpensesSectionProps) {
   const [saving, setSaving] = useState(false);
@@ -41,6 +52,8 @@ export default function ExpensesSection({
   const [payment, setPayment] = useState<PaymentDraft | null>(null);
   const [savingPayment, setSavingPayment] = useState(false);
   const [showCharts, setShowCharts] = useState(false);
+  const [sharing, setSharing] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const safeExpenses = expenses.map((e) => ({
     ...e,
@@ -56,6 +69,27 @@ export default function ExpensesSection({
   const transfers = computeTransfers(people);
   const totalSpent = realExpenses.reduce((sum, e) => sum + e.amount, 0);
   const me = people.find((p) => p.name === myName);
+
+  // Resumen para mandar al grupo de WhatsApp
+  const summaryMessage = () =>
+    buildSummaryMessage({
+      tripName,
+      totalSpent,
+      expenseCount: realExpenses.length,
+      people,
+      transfers,
+      url: typeof window !== "undefined" ? window.location.origin : "https://trail-camp.vercel.app",
+    });
+
+  const handleCopySummary = async () => {
+    try {
+      await navigator.clipboard.writeText(summaryMessage());
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      alert("No se pudo copiar. Mantén apretado el texto para copiarlo a mano.");
+    }
+  };
 
   // ---------- Gastos ----------
 
@@ -343,6 +377,46 @@ export default function ExpensesSection({
                 {isPaymentForTransfer(t) && paymentForm(true)}
               </div>
             ))
+          )}
+
+          {realExpenses.length > 0 && !sharing && (
+            <button
+              onClick={() => {
+                setSharing(true);
+                setCopied(false);
+              }}
+              className="w-full text-[11px] font-semibold py-2 rounded-lg border border-emerald-800/70 text-emerald-300 hover:bg-emerald-950/40 transition-colors"
+            >
+              📲 Compartir las cuentas por WhatsApp
+            </button>
+          )}
+
+          {sharing && (
+            <div className="bg-slate-950 border border-slate-800 rounded-lg p-2.5 space-y-2">
+              <p className="text-[11px] text-slate-300 whitespace-pre-line select-all">{summaryMessage()}</p>
+              <div className="flex flex-wrap gap-2">
+                <a
+                  href={`https://wa.me/?text=${encodeURIComponent(summaryMessage())}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[11px] font-semibold bg-emerald-600 hover:bg-emerald-500 text-white px-2.5 py-1 rounded-md"
+                >
+                  Enviar por WhatsApp
+                </a>
+                <button
+                  onClick={handleCopySummary}
+                  className="text-[11px] font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 px-2.5 py-1 rounded-md"
+                >
+                  {copied ? "✓ Copiado" : "📋 Copiar mensaje"}
+                </button>
+                <button
+                  onClick={() => setSharing(false)}
+                  className="text-[11px] text-slate-500 hover:text-slate-300 px-1"
+                >
+                  Cerrar
+                </button>
+              </div>
+            </div>
           )}
         </div>
       </div>
