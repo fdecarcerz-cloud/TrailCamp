@@ -408,7 +408,8 @@ Se borrarán también su equipo, material, autos y gastos. Esto no se puede desh
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans">
       {/* Header */}
-      <header className="border-b border-slate-800 bg-slate-900/60 backdrop-blur-md px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between gap-3 sticky top-0 z-40">
+      {/* Instalada en el celular la app pasa por debajo de la hora y la batería: el padding superior suma ese espacio */}
+      <header className="border-b border-slate-800 bg-slate-900/80 backdrop-blur-md px-4 sm:px-6 pb-3 sm:pb-4 pt-[calc(env(safe-area-inset-top,0px)+0.75rem)] sm:pt-[calc(env(safe-area-inset-top,0px)+1rem)] flex items-center justify-between gap-3 sticky top-0 z-40">
         <div className="flex items-center gap-3 min-w-0">
           <Logo className="w-10 h-10 shrink-0 drop-shadow" />
           <div>
