@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { supabase } from "@/lib/supabase";
 import AddFormToggle from "@/components/AddFormToggle";
+import SuggestGearModal from "@/components/gear/SuggestGearModal";
 import { GearItem, Participant } from "@/lib/types";
 
 const PRIORITIES: GearItem["priority"][] = ["Imprescindible", "Importante", "Opcional"];
@@ -24,6 +25,9 @@ interface GearSectionProps {
   participants: Participant[];
   // Nombre del participante cuyo email coincide con la sesión (null si no está en el equipo)
   myName: string | null;
+  // Para la lista sugerida (época del año y noches)
+  tripStart?: string;
+  tripEnd?: string;
   onRefresh: () => void;
 }
 
@@ -32,8 +36,11 @@ export default function GearSection({
   gear = [],
   participants = [],
   myName,
+  tripStart,
+  tripEnd,
   onRefresh,
 }: GearSectionProps) {
+  const [suggesting, setSuggesting] = useState(false);
   const [name, setName] = useState("");
   const [priority, setPriority] = useState<GearItem["priority"]>("Importante");
   const [quantity, setQuantity] = useState<number>(1);
@@ -195,6 +202,29 @@ export default function GearSection({
         <div className="bg-slate-900/60 border border-slate-800 text-slate-400 text-[11px] px-4 py-2.5 rounded-xl">
           💡 Para anotarte con &quot;Yo lo llevo&quot;, agrega tu correo a tu nombre en la pestaña Equipo.
         </div>
+      )}
+
+      <button
+        onClick={() => setSuggesting(true)}
+        className={`w-full text-xs font-semibold py-2.5 rounded-xl border transition-colors ${
+          gear.length === 0
+            ? "bg-sky-600 hover:bg-sky-500 border-sky-500 text-white"
+            : "bg-slate-900 border-slate-700 text-sky-300 hover:border-sky-600"
+        }`}
+      >
+        ✨ {gear.length === 0 ? "Sugerir una lista de material para este viaje" : "Sugerir más cosas"}
+      </button>
+
+      {suggesting && (
+        <SuggestGearModal
+          tripId={tripId}
+          people={participants.length}
+          startDate={tripStart}
+          endDate={tripEnd}
+          existing={gear}
+          onClose={() => setSuggesting(false)}
+          onAdded={onRefresh}
+        />
       )}
 
       {/* Formulario nuevo material */}

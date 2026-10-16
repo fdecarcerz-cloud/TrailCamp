@@ -217,7 +217,15 @@ export default function TripScreen({ tripId }: { tripId: string }) {
             />
           )}
           {activeTab === "gear" && (
-            <GearSection tripId={trip.id} gear={gear} participants={participants} myName={myName} onRefresh={fetchDetails} />
+            <GearSection
+              tripId={trip.id}
+              gear={gear}
+              participants={participants}
+              myName={myName}
+              tripStart={trip.start_date}
+              tripEnd={trip.end_date}
+              onRefresh={fetchDetails}
+            />
           )}
           {activeTab === "carpool" && (
             <CarpoolSection
