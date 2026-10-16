@@ -158,9 +158,11 @@ export default function Home() {
     }
   }, []);
 
+  // Se recarga al cambiar de usuario: al volver de Google o del enlace de confirmación,
+  // la sesión puede quedar lista después de la primera carga
   useEffect(() => {
     fetchTrips();
-  }, [fetchTrips]);
+  }, [fetchTrips, currentUserId]);
 
   // 3. Cargar detalles del viaje seleccionado
   const fetchTripDetails = useCallback(async (tripId: string) => {
