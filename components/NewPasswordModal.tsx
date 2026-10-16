@@ -7,10 +7,13 @@ import { translateAuthError } from "@/lib/authErrors";
 interface NewPasswordModalProps {
   isOpen: boolean;
   onDone: () => void;
+  // Solo al cambiarla desde el menú ⋯ (al recuperar contraseña hay que terminar el paso)
+  onCancel?: () => void;
 }
 
-// Se abre cuando alguien llega desde el enlace de "Recuperar contraseña" (evento PASSWORD_RECOVERY)
-export default function NewPasswordModal({ isOpen, onDone }: NewPasswordModalProps) {
+// Se abre al llegar desde el enlace de "Recuperar contraseña" (evento PASSWORD_RECOVERY)
+// o desde "Cambiar contraseña" en el menú ⋯
+export default function NewPasswordModal({ isOpen, onDone, onCancel }: NewPasswordModalProps) {
   const [password, setPassword] = useState("");
   const [repeat, setRepeat] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
@@ -81,6 +84,15 @@ export default function NewPasswordModal({ isOpen, onDone }: NewPasswordModalPro
               className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500"
             />
           </div>
+          {onCancel && (
+            <button
+              type="button"
+              onClick={onCancel}
+              className="w-full bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs py-2.5 rounded-lg"
+            >
+              Cancelar
+            </button>
+          )}
           <button
             type="submit"
             disabled={loading}

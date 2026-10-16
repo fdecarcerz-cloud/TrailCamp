@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { supabase } from "@/lib/supabase";
 import AddFormToggle from "@/components/AddFormToggle";
-import { Participant } from "@/app/page";
+import { Participant } from "@/lib/types";
 
 type Role = Participant["role"];
 const ROLES: Role[] = ["Participante", "Guía", "Organizador"];
@@ -40,7 +40,9 @@ export default function ParticipantsSection({
   const [copied, setCopied] = useState(false);
 
   const inviteMessage = (p: Participant) => {
-    const url = typeof window !== "undefined" ? window.location.origin : "https://trail-camp.vercel.app";
+    // Lleva directo al viaje (si no ha iniciado sesión, ahí mismo se le pide)
+    const origin = typeof window !== "undefined" ? window.location.origin : "https://trail-camp.vercel.app";
+    const url = `${origin}/viaje/${tripId}`;
     return [
       `¡Hola ${p.name}! Te sumé al viaje "${tripName}"${tripDetails ? ` (${tripDetails})` : ""} en TrailCamp, donde organizamos el material, los autos y los gastos.`,
       "",

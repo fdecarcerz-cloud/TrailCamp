@@ -75,7 +75,9 @@ export default function GoogleSignInButton({
   const containerRef = useRef<HTMLDivElement>(null);
   const [failed, setFailed] = useState(!CLIENT_ID);
   const callbacks = useRef({ onSuccess, onError });
-  callbacks.current = { onSuccess, onError };
+  useEffect(() => {
+    callbacks.current = { onSuccess, onError };
+  }, [onSuccess, onError]);
 
   useEffect(() => {
     if (!CLIENT_ID) return;

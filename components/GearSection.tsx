@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { supabase } from "@/lib/supabase";
 import AddFormToggle from "@/components/AddFormToggle";
-import { GearItem, Participant } from "@/app/page";
+import { GearItem, Participant } from "@/lib/types";
 
 const PRIORITIES: GearItem["priority"][] = ["Imprescindible", "Importante", "Opcional"];
 

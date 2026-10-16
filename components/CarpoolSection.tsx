@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { supabase } from "@/lib/supabase";
 import AddFormToggle from "@/components/AddFormToggle";
-import { Carpool, Participant } from "@/app/page";
+import { Carpool, Participant } from "@/lib/types";
 
 interface CarpoolSectionProps {
   tripId: string;

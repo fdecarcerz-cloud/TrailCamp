@@ -1,4 +1,4 @@
-import type { Expense, Participant } from "@/app/page";
+import type { Expense, Participant } from "@/lib/types";
 
 // ---------- Categorías (se deducen de la descripción; el usuario puede cambiarla) ----------
 

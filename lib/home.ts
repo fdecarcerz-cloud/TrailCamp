@@ -1,0 +1,140 @@
+import type { Carpool, Expense, GearItem, Participant, Trip } from "@/lib/types";
+import { nightsOf, todayISO, tripStatus, type TripStatus } from "@/lib/dates";
+import { computeTransfers, summarize } from "@/lib/expenses";
+
+// Resumen de la pantalla de Inicio, a partir de todos los viajes del usuario.
+
+export interface TripCard {
+  trip: Trip;
+  status: TripStatus;
+  myName: string | null;
+  people: number;
+  gearTotal: number;
+  gearPacked: number;
+  totalSpent: number;
+}
+
+export interface Pending {
+  icon: string;
+  text: string;
+  tripId: string;
+  tripName: string;
+  urgent: boolean; // deudas tuyas e imprescindibles sin responsable van primero
+}
+
+export interface HomeSummary {
+  featured: TripCard | null; // el viaje en curso o el próximo
+  upcoming: TripCard[]; // próximos, sin el destacado
+  past: TripCard[];
+  pending: Pending[];
+  stats: {
+    tripsDone: number;
+    nights: number;
+    mySpent: number;
+    companion: { name: string; trips: number } | null;
+  };
+}
+
+const sameEmail = (a?: string | null, b?: string | null) => !!a && !!b && a.toLowerCase() === b.toLowerCase();
+
+export function buildHomeSummary(input: {
+  trips: Trip[];
+  participants: Participant[];
+  gear: GearItem[];
+  carpools: Carpool[];
+  expenses: Expense[];
+  email: string | null;
+  today?: string;
+}): HomeSummary {
+  const { trips, participants, gear, carpools, expenses, email } = input;
+  const today = input.today ?? todayISO();
+  const of = <T extends { trip_id: string }>(rows: T[], tripId: string) =>
+    rows.filter((r) => String(r.trip_id) === String(tripId));
+
+  const cards: TripCard[] = [];
+  const pending: Pending[] = [];
+  let mySpent = 0;
+  const companions = new Map<string, { name: string; trips: number }>();
+
+  for (const trip of trips) {
+    const tParts = of(participants, trip.id);
+    const tGear = of(gear, trip.id);
+    const tCars = of(carpools, trip.id);
+    const tExp = of(expenses, trip.id);
+    const myName = tParts.find((p) => sameEmail(p.email, email))?.name ?? null;
+    const status = tripStatus(trip.start_date, trip.end_date, today);
+    const people = summarize(tParts, tExp);
+
+    cards.push({
+      trip,
+      status,
+      myName,
+      people: tParts.length,
+      gearTotal: tGear.length,
+      gearPacked: tGear.filter((g) => g.status === "Empacado").length,
+      totalSpent: tExp.filter((e) => !e.is_settlement).reduce((s, e) => s + (Number(e.amount) || 0), 0),
+    });
+
+    const add = (icon: string, text: string, urgent = false) =>
+      pending.push({ icon, text, tripId: trip.id, tripName: trip.name, urgent });
+
+    // Deudas: también en viajes pasados, hasta que se paguen
+    if (myName) {
+      const me = people.find((p) => p.name === myName);
+      if (me) mySpent += me.consumed;
+      for (const t of computeTransfers(people)) {
+        if (t.from === myName) add("💸", `Le debes $${t.amount.toLocaleString("es-CL")} a ${t.to}`, true);
+        if (t.to === myName) add("💰", `${t.from} te debe $${t.amount.toLocaleString("es-CL")}`);
+      }
+    }
+
+    if (status !== "pasado") {
+      const critical = tGear.filter(
+        (g) => g.priority === "Imprescindible" && g.status !== "Empacado" && !g.assigned_to
+      ).length;
+      if (critical > 0) {
+        add("⚠️", critical === 1 ? "1 imprescindible sin nadie que lo lleve" : `${critical} imprescindibles sin nadie que los lleve`, true);
+      }
+      if (myName) {
+        const mine = tGear.filter((g) => g.assigned_to === myName && g.status !== "Empacado").length;
+        if (mine > 0) add("🎒", mine === 1 ? "Llevas 1 cosa sin empacar" : `Llevas ${mine} cosas sin empacar`);
+        const hasRide = tCars.some(
+          (c) => c.driver_name === myName || (Array.isArray(c.passengers) && c.passengers.includes(myName))
+        );
+        if (tCars.length > 0 && !hasRide) add("🚗", "Todavía no tienes auto");
+      }
+    }
+
+    // Compañeros de viaje: misma persona en varios viajes (por correo, o por nombre si no tiene)
+    if (status !== "proximo") {
+      for (const p of tParts) {
+        if (sameEmail(p.email, email) || p.name === myName) continue;
+        const key = p.email?.toLowerCase() || p.name.toLowerCase();
+        const prev = companions.get(key);
+        companions.set(key, { name: p.name, trips: (prev?.trips ?? 0) + 1 });
+      }
+    }
+  }
+
+  const byStart = (a: TripCard, b: TripCard) => (a.trip.start_date || "9999").localeCompare(b.trip.start_date || "9999");
+  const ongoing = cards.filter((c) => c.status === "en-curso").sort(byStart);
+  const upcoming = cards.filter((c) => c.status === "proximo").sort(byStart);
+  const past = cards.filter((c) => c.status === "pasado").sort((a, b) => byStart(b, a));
+  const featured = ongoing[0] ?? upcoming[0] ?? null;
+
+  const done = [...past, ...ongoing];
+  const companion = [...companions.values()].sort((a, b) => b.trips - a.trips)[0] ?? null;
+
+  return {
+    featured,
+    upcoming: [...ongoing, ...upcoming].filter((c) => c !== featured),
+    past,
+    pending: pending.sort((a, b) => Number(b.urgent) - Number(a.urgent)),
+    stats: {
+      tripsDone: past.length,
+      nights: done.reduce((s, c) => s + nightsOf(c.trip.start_date, c.trip.end_date), 0),
+      mySpent,
+      companion: companion && companion.trips > 0 ? companion : null,
+    },
+  };
+}

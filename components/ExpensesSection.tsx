@@ -5,7 +5,7 @@ import { supabase } from "@/lib/supabase";
 import AddFormToggle from "@/components/AddFormToggle";
 import ExpenseForm, { type ExpenseDraft } from "@/components/expenses/ExpenseForm";
 import { CategoryChart, PeopleChart } from "@/components/expenses/ExpenseCharts";
-import { Expense, Participant } from "@/app/page";
+import { Expense, Participant } from "@/lib/types";
 import {
   CATEGORY_INFO,
   type Transfer,

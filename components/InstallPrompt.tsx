@@ -30,25 +30,37 @@ function wasDismissed() {
   }
 }
 
-export default function InstallPrompt() {
+interface InstallPromptProps {
+  // Abierto a pedido desde el menú ⋯ (aunque se haya cerrado antes o sea un computador)
+  forced?: boolean;
+  onForcedClose?: () => void;
+}
+
+export default function InstallPrompt({ forced = false, onForcedClose }: InstallPromptProps) {
   const [installEvent, setInstallEvent] = useState<BeforeInstallPromptEvent | null>(null);
   const [showIosHelp, setShowIosHelp] = useState(false);
 
+  // El evento de Android/Chrome se guarda siempre, para poder usarlo si se pide desde el menú
   useEffect(() => {
-    if (isStandalone() || wasDismissed() || !window.matchMedia("(pointer: coarse)").matches) return;
-
     const onBeforeInstall = (e: Event) => {
       e.preventDefault();
       setInstallEvent(e as BeforeInstallPromptEvent);
     };
     window.addEventListener("beforeinstallprompt", onBeforeInstall);
+    return () => window.removeEventListener("beforeinstallprompt", onBeforeInstall);
+  }, []);
+
+  const [autoAllowed, setAutoAllowed] = useState(false);
+  useEffect(() => {
+    if (isStandalone() || wasDismissed() || !window.matchMedia("(pointer: coarse)").matches) return;
+    const allow = setTimeout(() => setAutoAllowed(true), 0);
 
     // En iPhone no existe beforeinstallprompt; se muestra la ayuda después de un momento
     const isIos = /iphone|ipad|ipod/i.test(navigator.userAgent);
     const timer = isIos ? setTimeout(() => setShowIosHelp(true), 2500) : undefined;
 
     return () => {
-      window.removeEventListener("beforeinstallprompt", onBeforeInstall);
+      clearTimeout(allow);
       clearTimeout(timer);
     };
   }, []);
@@ -59,19 +71,24 @@ export default function InstallPrompt() {
     } catch {
       // Sin almacenamiento disponible: solo se oculta por ahora
     }
-    setInstallEvent(null);
+    setAutoAllowed(false);
     setShowIosHelp(false);
+    onForcedClose?.();
   };
 
   const install = async () => {
     if (!installEvent) return;
     await installEvent.prompt();
     const { outcome } = await installEvent.userChoice;
-    if (outcome === "accepted") dismiss();
-    else setInstallEvent(null);
+    if (outcome === "accepted") {
+      setInstallEvent(null);
+      dismiss();
+    }
   };
 
-  if (!installEvent && !showIosHelp) return null;
+  const isIos = typeof navigator !== "undefined" && /iphone|ipad|ipod/i.test(navigator.userAgent);
+  const visible = forced || (autoAllowed && (!!installEvent || showIosHelp));
+  if (!visible) return null;
 
   return (
     <div
@@ -84,6 +101,13 @@ export default function InstallPrompt() {
           <p className="font-semibold text-white">Instala TrailCamp en tu celular</p>
           {installEvent ? (
             <p className="text-slate-400">Ábrela desde tu pantalla de inicio, como cualquier app.</p>
+          ) : forced && typeof window !== "undefined" && isStandalone() ? (
+            <p className="text-slate-400">¡Ya la tienes instalada! 🎉</p>
+          ) : forced && !isIos ? (
+            <p className="text-slate-400">
+              Abre trail-camp.vercel.app en tu celular. En iPhone: Safari → Compartir → &quot;Agregar a inicio&quot;. En
+              Android: menú ⋮ → &quot;Instalar app&quot;.
+            </p>
           ) : (
             <p className="text-slate-400">
               Toca <span className="text-slate-200">Compartir</span> (el cuadrado con flecha ⬆️) y luego{" "}

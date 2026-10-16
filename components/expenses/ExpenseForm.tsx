@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { Expense, Participant } from "@/app/page";
+import type { Expense, Participant } from "@/lib/types";
 import {
   CATEGORIES,
   CATEGORY_INFO,

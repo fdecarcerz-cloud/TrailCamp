@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { Expense } from "@/app/page";
+import type { Expense } from "@/lib/types";
 import { CATEGORIES, CATEGORY_INFO, type Category, type PersonSummary, categoryOf, clp } from "@/lib/expenses";
 
 // Serie "Pagó" / "Le corresponde": dos primeros colores categóricos validados (modo oscuro)

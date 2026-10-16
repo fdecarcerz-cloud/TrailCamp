@@ -41,19 +41,25 @@ Project ref: `eysvljnbutnehnknczzq`. The CLI is used through `npx` and is alread
 
 ## Architecture
 
-- Realtime: `page.tsx` subscribes to `postgres_changes` for the open trip, plus `participants` inserts for the user's own email, which surfaces new invitations. It refetches with a 400 ms debounce, and also when the tab becomes visible again. DELETE events carry only the id, so they are matched against the loaded rows. All 5 trip tables are in the `supabase_realtime` publication.
+TrailCamp is a camping-trip coordinator. The UI text and code comments are in Spanish, so keep new UI strings in Spanish.
 
-- "Who am I" inside a trip is `myName` in `page.tsx`: the participant whose email matches the session email. It drives "Yo lo llevo", "Me subo" and hiding the invite button for yourself.
-
-TrailCamp is a single-page trip/expedition coordinator. The UI text and code comments are in Spanish, so keep new UI strings in Spanish.
-
-- `app/page.tsx` is a `"use client"` page that owns all state and is also the **source of truth for the shared data types** (`Trip`, `Participant`, `GearItem`, `Carpool`, `Expense`). Components import these types from `@/app/page`. Enum-like string unions (e.g. `GearItem["category"]`, participant `role`/`status`) must match the values stored in the Supabase tables.
-- Data flow: `page.tsx` handles auth state (`supabase.auth.onAuthStateChange`), loads `trips`, then for the selected trip loads `participants`, `gear`, `carpools` and `expenses` in parallel (filtered by `trip_id`). It passes the arrays down to the tab components.
-- `components/*Section.tsx` (Participants, Gear, Carpool, Expenses) each do their own insert/update/delete calls directly against Supabase, then call the `onRefresh` prop so the page refetches. There is no local optimistic state or global store.
-- `components/AuthModal.tsx` handles email/password sign-in and sign-up.
+- **Routes:**
+  - `/` is Inicio (`components/home/HomeScreen.tsx`). It shows the next trip, cross-trip to-dos, upcoming and past trips, and stats. The math is in `lib/home.ts`.
+  - `/viaje/[id]` is one trip (`components/trip/TripScreen.tsx`, keyed by id). It holds the tabs, the notes, the creator-only edit/delete buttons, and the realtime subscription.
+  - `/privacidad` is the privacy policy.
+- **`components/app/AppProvider.tsx`** (mounted in `app/layout.tsx`, read with `useApp()`):
+  - Owns the session, `displayName`, the `trips` list and `fetchTrips`.
+  - Renders the shared modals: auth, new password, trip form, profile and install prompt.
+  - Subscribes to `participants` inserts for the user's email, so new invitations show up live.
+  - `displayName` comes from `user_metadata.nombre` (set in "Mi cuenta"), falling back to the Google name and then the email prefix. New trips add the creator as Organizador under that name.
+- `components/app/AppHeader.tsx` holds the logo, or "← Inicio" inside a trip, plus the ⋯ account menu.
+- **Data types** live in `lib/types.ts`. Enum-like unions (participant `role`/`status`, gear `priority`/`status`) must match the values stored in the DB.
+- **Who am I inside a trip** is `myName`: the participant whose email matches the session email. It drives "Yo lo llevo", "Me subo" and hiding the invite button for yourself.
+- **Section components:** `components/*Section.tsx` write to Supabase directly and then call `onRefresh`. There is no optimistic state.
+- **Realtime:** `TripScreen` subscribes to `postgres_changes` for its trip. It refetches with a 400 ms debounce, and also when the tab becomes visible again. DELETE events only carry the id, so they are matched against the loaded rows. Every trip table is in the `supabase_realtime` publication.
 - **Access control is enforced by Supabase RLS policies, not by the app.** `trips` queries have no user filter and rely on RLS. Creating a trip sets `user_id` and automatically inserts the creator as an `Organizador` participant. `trips` policies allow the owner, or anyone whose email is in that trip's `participants`. The other four tables use the security-definer helper `public.puede_ver_viaje(trip_id)`.
 - Participants are referenced **by name, not ID**: `Expense.paid_by`, `Expense.split_between`, `GearItem.assigned_to`, `Carpool.driver_name` and `Carpool.passengers` store participant names. Each person rides in at most one car, and drivers are never passengers; CarpoolSection enforces this. Because of that, names are unique per trip (unique index on `(trip_id, lower(btrim(name)))`). Always rename or delete participants through the RPCs `renombrar_participante`, which propagates the new name to gear, carpool drivers and passengers, and expenses, and `borrar_participante`, which refuses if the person appears in expenses or drives a car, and frees their gear and seats. Never update or delete the rows directly. Only the trip creator may update or delete participants (`es_creador_viaje`); anyone in the trip can add them. Settlements are `expenses` rows with `is_settlement = true` (`paid_by` = payer, `split_between = [payee]`). They count in balances but not in the total spent. Trip notes live in `trips.description` and are saved through `guardar_notas_viaje`, which lets any participant edit them even though only the creator can update `trips`.
-- The live DB has drifted from the TS interfaces in `app/page.tsx`. Ids are `bigint`, not strings. Tables also keep legacy columns: `trips.title`/`date` are kept in sync with `name`/`start_date` by triggers, and `carpools` has unused `driver`/`total_seats`. `carpools.car` is the optional vehicle label. In `gear`, the app uses `name`/`priority` (Imprescindible/Importante/Opcional)/`status`. Legacy `item` is nullable and the app no longer writes it. Check `supabase/estructura_actual.sql` before trusting the interfaces.
+- The live DB has drifted from the TS interfaces in `lib/types.ts`. Ids are `bigint`, not strings. Tables also keep legacy columns: `trips.title`/`date` are kept in sync with `name`/`start_date` by triggers, and `carpools` has unused `driver`/`total_seats`. `carpools.car` is the optional vehicle label. In `gear`, the app uses `name`/`priority` (Imprescindible/Importante/Opcional)/`status`. Legacy `item` is nullable and the app no longer writes it. Check `supabase/estructura_actual.sql` before trusting the interfaces.
 - Expenses work like Tricount. All the math is in `lib/expenses.ts`:
   - `sharesOf` handles the split modes: `split_mode` is `igual`, `partes` or `montos`, and `split_values` holds one number per person, aligned by position with `split_between`. A DB check enforces equal length, so `renombrar_participante` can keep using `array_replace`.
   - `summarize` and `computeTransfers` build the balances and the greedy settlement.
