@@ -16,6 +16,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
   const [isForgot, setIsForgot] = useState(false);
   const [infoMsg, setInfoMsg] = useState("");
   const [needsConfirm, setNeedsConfirm] = useState(false);
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
@@ -96,6 +97,11 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
 
     // Mismas reglas que Supabase (Auth → contraseña), para mostrar el error en español.
     // Solo al crear cuenta: cuentas antiguas pueden tener contraseñas de 6 caracteres.
+    if (isSignUp && !name.trim()) {
+      setErrorMsg("Escribe tu nombre.");
+      return;
+    }
+
     if (isSignUp && (password.length < 8 || !/[a-zA-Z]/.test(password) || !/\d/.test(password))) {
       setErrorMsg("La contraseña debe tener al menos 8 caracteres, con letras y números.");
       return;
@@ -108,8 +114,12 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
         const { data, error } = await supabase.auth.signUp({
           email,
           password,
-          // El enlace de confirmación vuelve a la app (debe estar en Redirect URLs de Supabase)
-          options: { emailRedirectTo: window.location.origin },
+          options: {
+            // El enlace de confirmación vuelve a la app (debe estar en Redirect URLs de Supabase)
+            emailRedirectTo: window.location.origin,
+            // Mismo campo que "Mi cuenta": saludo y nombre al crear viajes
+            data: { nombre: name.trim() },
+          },
         });
         if (error) throw error;
         if (data.session) {
@@ -219,6 +229,20 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
         )}
 
         <form onSubmit={isForgot ? handleForgot : handleAuth} className="space-y-4">
+          {isSignUp && (
+            <div>
+              <label className="text-xs font-semibold text-slate-300 block mb-1">Tu nombre</label>
+              <input
+                type="text"
+                required
+                autoComplete="given-name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Ej: Fernando"
+                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500"
+              />
+            </div>
+          )}
           <div>
             <label className="text-xs font-semibold text-slate-300 block mb-1">
               Correo electrónico

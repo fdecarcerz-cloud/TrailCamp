@@ -44,6 +44,7 @@ export function buildHomeSummary(input: {
   carpools: Carpool[];
   expenses: Expense[];
   email: string | null;
+  userId?: string | null;
   today?: string;
 }): HomeSummary {
   const { trips, participants, gear, carpools, expenses, email } = input;
@@ -89,6 +90,19 @@ export function buildHomeSummary(input: {
     }
 
     if (status !== "pasado") {
+      // Sin su correo en el equipo, la app no sabe cuál es: no funcionan "Yo lo llevo", "Me subo" ni su balance
+      if (!myName) {
+        // Solo el creador ve el botón "Soy yo" (editar el equipo es solo suyo)
+        const isCreator = !!input.userId && String(trip.user_id) === String(input.userId);
+        add(
+          "🙋",
+          isCreator
+            ? "No te encontramos en el equipo: toca \"Soy yo\" junto a tu nombre"
+            : "No apareces con tu correo en el equipo: pídele al organizador que lo agregue",
+          true
+        );
+      }
+
       const critical = tGear.filter(
         (g) => g.priority === "Imprescindible" && g.status !== "Empacado" && !g.assigned_to
       ).length;
@@ -105,8 +119,9 @@ export function buildHomeSummary(input: {
       }
     }
 
-    // Compañeros de viaje: misma persona en varios viajes (por correo, o por nombre si no tiene)
-    if (status !== "proximo") {
+    // Compañeros de viaje: misma persona en varios viajes (por correo, o por nombre si no tiene).
+    // Solo en viajes donde se sabe cuál es el usuario; si no, podría contarse a sí mismo.
+    if (status !== "proximo" && myName) {
       for (const p of tParts) {
         if (sameEmail(p.email, email) || p.name === myName) continue;
         const key = p.email?.toLowerCase() || p.name.toLowerCase();

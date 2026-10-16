@@ -37,9 +37,10 @@ export default function HomeScreen() {
         carpools: c.data ?? [],
         expenses: e.data ?? [],
         email,
+        userId,
       })
     );
-  }, [trips, email]);
+  }, [trips, email, userId]);
 
   useEffect(() => {
     if (!userId || tripsLoading) return;

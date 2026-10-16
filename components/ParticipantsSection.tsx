@@ -17,6 +17,8 @@ interface ParticipantsSectionProps {
   tripName: string;
   tripDetails: string;
   myName: string | null;
+  // Correo de la sesión, para "Soy yo" cuando la app no reconoce al usuario en el equipo
+  myEmail: string | null;
   onRefresh: () => void;
 }
 
@@ -33,6 +35,7 @@ export default function ParticipantsSection({
   tripName,
   tripDetails,
   myName,
+  myEmail,
   onRefresh,
 }: ParticipantsSectionProps) {
   // Invitación por persona: incluye el correo exacto con que debe crear su cuenta
@@ -145,6 +148,20 @@ export default function ParticipantsSection({
     } finally {
       setSavingEdit(false);
     }
+  };
+
+  // "Soy yo": le pone el correo de la sesión a una persona sin correo (mismo nombre y rol)
+  const handleThisIsMe = async (p: Participant) => {
+    if (!myEmail) return;
+    if (!confirm(`¿Eres "${p.name}"? Se le pondrá tu correo (${myEmail}) para que la app te reconozca en este viaje.`)) return;
+    const { error } = await supabase.rpc("renombrar_participante", {
+      p_id: p.id,
+      p_nombre: p.name,
+      p_email: myEmail,
+      p_rol: p.role,
+    });
+    if (error) alert("No se pudo guardar: " + error.message);
+    else onRefresh();
   };
 
   const handleDeleteParticipant = async (p: Participant) => {
@@ -306,6 +323,14 @@ export default function ParticipantsSection({
                     <div className="text-[11px] text-amber-400">
                       ⚠️ Sin correo: no puede ver el viaje desde su cuenta
                     </div>
+                  )}
+                  {!p.email && !myName && isCreator && myEmail && (
+                    <button
+                      onClick={() => handleThisIsMe(p)}
+                      className="mt-1.5 text-[11px] font-semibold bg-sky-900/60 hover:bg-sky-800 text-sky-200 border border-sky-800 px-2 py-0.5 rounded-md"
+                    >
+                      🙋 Soy yo
+                    </button>
                   )}
                 </div>
                 {isCreator && (

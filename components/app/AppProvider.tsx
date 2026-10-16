@@ -43,7 +43,9 @@ function nameFromUser(user: User | null): string {
   if (!user) return "";
   const meta = user.user_metadata ?? {};
   const raw = (meta.nombre || meta.full_name || meta.name || "") as string;
-  return raw.trim() || (user.email ?? "").split("@")[0];
+  if (raw.trim()) return raw.trim();
+  const fromEmail = (user.email ?? "").split("@")[0];
+  return fromEmail.charAt(0).toUpperCase() + fromEmail.slice(1);
 }
 
 export default function AppProvider({ children }: { children: ReactNode }) {

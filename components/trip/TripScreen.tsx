@@ -212,6 +212,7 @@ export default function TripScreen({ tripId }: { tripId: string }) {
               tripName={trip.name}
               tripDetails={[formatDateRange(trip.start_date, trip.end_date), trip.destination].filter(Boolean).join(", ")}
               myName={myName}
+              myEmail={email}
               onRefresh={fetchDetails}
             />
           )}
