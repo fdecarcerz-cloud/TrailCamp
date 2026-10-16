@@ -2,6 +2,9 @@
 export function translateAuthError(message?: string): string {
   const m = (message ?? "").toLowerCase();
   if (m.includes("invalid login credentials")) return "Correo o contraseña incorrectos.";
+  if (m.includes("provider is not enabled") || m.includes("unsupported provider")) {
+    return "El inicio de sesión con Google todavía no está activado.";
+  }
   if (m.includes("email not confirmed")) {
     return "Todavía no confirmas tu correo. Busca el correo de TrailCamp (revisa también spam) y aprieta \"Confirmar mi correo\".";
   }
