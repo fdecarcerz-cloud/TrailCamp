@@ -60,6 +60,10 @@ export interface Expense {
   paid_by: string;
   split_between: string[];
   is_settlement?: boolean;
+  // Tricount: modo de división y un valor por persona, alineado con split_between
+  split_mode?: "igual" | "partes" | "montos";
+  split_values?: number[] | null;
+  category?: string | null;
 }
 
 export default function Home() {
@@ -547,6 +551,7 @@ Se borrarán también su equipo, material, autos y gastos. Esto no se puede desh
                     tripId={selectedTrip.id}
                     expenses={expenses}
                     participants={participants}
+                    myName={myName}
                     onRefresh={() => fetchTripDetails(selectedTrip.id)}
                   />
                 )}

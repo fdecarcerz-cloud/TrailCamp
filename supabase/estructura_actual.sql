@@ -1,5 +1,5 @@
 -- Copia completa de la estructura de la base de datos de Supabase (schema public).
--- Foto tomada el 2026-10-14, después de aplicar migrations/20261014230000_notas_del_viaje.sql.
+-- Foto tomada el 2026-10-14, después de aplicar migrations/20261016120000_gastos_division_y_categoria.sql.
 -- Sirve para recrear la base de datos desde cero en un proyecto vacío (SQL Editor -> pegar -> Run).
 -- No contiene datos (viajes, gastos, etc.), solo la estructura.
 -- Actualizar este archivo cada vez que se cambie la base de datos.
@@ -28,7 +28,10 @@ create table if not exists public.expenses (
   included_members text[],
   created_at timestamp with time zone default timezone('utc'::text, now()),
   split_between text[] default '{}'::text[],
-  is_settlement boolean default false not null
+  is_settlement boolean default false not null,
+  split_mode text default 'igual'::text not null,
+  split_values numeric[],
+  category text
 );
 
 create table if not exists public.gear (
@@ -77,6 +80,12 @@ alter table participants add constraint participants_pkey PRIMARY KEY (id);
 alter table trips add constraint trips_pkey PRIMARY KEY (id);
 
 alter table carpools add constraint carpools_trip_id_fkey FOREIGN KEY (trip_id) REFERENCES trips(id) ON DELETE CASCADE;
+
+alter table expenses add constraint expenses_category_valida CHECK (((category IS NULL) OR (category = ANY (ARRAY['Comida'::text, 'Transporte'::text, 'Alojamiento'::text, 'Actividades'::text, 'Otros'::text]))));
+
+alter table expenses add constraint expenses_split_mode_valido CHECK ((split_mode = ANY (ARRAY['igual'::text, 'partes'::text, 'montos'::text])));
+
+alter table expenses add constraint expenses_split_values_alineado CHECK (((split_values IS NULL) OR (cardinality(split_values) = cardinality(split_between))));
 
 alter table expenses add constraint expenses_trip_id_fkey FOREIGN KEY (trip_id) REFERENCES trips(id) ON DELETE CASCADE;
 
