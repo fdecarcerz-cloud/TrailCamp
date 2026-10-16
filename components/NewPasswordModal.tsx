@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { translateAuthError } from "@/lib/authErrors";
 
 interface NewPasswordModalProps {
   isOpen: boolean;
@@ -40,7 +41,7 @@ export default function NewPasswordModal({ isOpen, onDone }: NewPasswordModalPro
       alert("¡Listo! Tu contraseña quedó cambiada.");
       onDone();
     } catch (err: any) {
-      setErrorMsg(err.message || "No se pudo cambiar la contraseña.");
+      setErrorMsg(translateAuthError(err?.message));
     } finally {
       setLoading(false);
     }

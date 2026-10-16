@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { supabase } from "../lib/supabase";
+import { translateAuthError } from "@/lib/authErrors";
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -13,6 +14,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
   const [isSignUp, setIsSignUp] = useState(false);
   const [isForgot, setIsForgot] = useState(false);
   const [infoMsg, setInfoMsg] = useState("");
+  const [needsConfirm, setNeedsConfirm] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
@@ -36,7 +38,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
         "Si hay una cuenta con ese correo, te llegará un enlace para crear una contraseña nueva. Revisa también la carpeta de spam."
       );
     } catch (err: any) {
-      setErrorMsg(err.message || "No se pudo enviar el correo.");
+      setErrorMsg(translateAuthError(err?.message));
     } finally {
       setLoading(false);
     }
@@ -47,11 +49,33 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
     setIsForgot(forgot);
     setErrorMsg("");
     setInfoMsg("");
+    setNeedsConfirm(false);
+  };
+
+  const handleResendConfirmation = async () => {
+    setErrorMsg("");
+    setLoading(true);
+    try {
+      const { error } = await supabase.auth.resend({
+        type: "signup",
+        email: email.trim(),
+        options: { emailRedirectTo: window.location.origin },
+      });
+      if (error) throw error;
+      setNeedsConfirm(false);
+      setInfoMsg(`Te reenviamos el correo de confirmación a ${email.trim()}. Revisa también spam.`);
+    } catch (err: any) {
+      setErrorMsg(translateAuthError(err?.message));
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg("");
+    setInfoMsg("");
+    setNeedsConfirm(false);
 
     // Mismas reglas que Supabase (Auth → contraseña), para mostrar el error en español.
     // Solo al crear cuenta: cuentas antiguas pueden tener contraseñas de 6 caracteres.
@@ -64,13 +88,24 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
 
     try {
       if (isSignUp) {
-        const { error } = await supabase.auth.signUp({
+        const { data, error } = await supabase.auth.signUp({
           email,
           password,
+          // El enlace de confirmación vuelve a la app (debe estar en Redirect URLs de Supabase)
+          options: { emailRedirectTo: window.location.origin },
         });
         if (error) throw error;
-        alert("¡Cuenta creada con éxito! Si tienes confirmación por correo activada, revisa tu bandeja de entrada.");
+        if (data.session) {
+          // "Confirm email" apagado en Supabase: la cuenta queda lista y con sesión iniciada
+          onSuccess();
+          onClose();
+          return;
+        }
         setIsSignUp(false);
+        setPassword("");
+        setInfoMsg(
+          `¡Listo! Te enviamos un correo a ${email.trim()}. Ábrelo y aprieta "Confirmar mi correo" para terminar (revisa también spam).`
+        );
       } else {
         const { error } = await supabase.auth.signInWithPassword({
           email,
@@ -81,7 +116,8 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
         onClose();
       }
     } catch (err: any) {
-      setErrorMsg(err.message || "Ocurrió un error en la autenticación.");
+      setErrorMsg(translateAuthError(err?.message));
+      if ((err?.message ?? "").toLowerCase().includes("email not confirmed")) setNeedsConfirm(true);
     } finally {
       setLoading(false);
     }
@@ -112,6 +148,17 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
           <div className="bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs p-3 rounded-lg mb-4">
             {errorMsg}
           </div>
+        )}
+
+        {needsConfirm && (
+          <button
+            type="button"
+            onClick={handleResendConfirmation}
+            disabled={loading}
+            className="w-full text-xs text-emerald-300 hover:text-emerald-200 underline mb-4 disabled:opacity-50"
+          >
+            Reenviar correo de confirmación
+          </button>
         )}
 
         {infoMsg && (
