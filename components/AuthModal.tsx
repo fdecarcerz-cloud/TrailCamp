@@ -192,6 +192,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
                 onClose();
               }}
               onError={(message) => setErrorMsg(translateAuthError(message))}
+              onRedirectSignIn={handleGoogle}
               fallback={
                 <button
                   type="button"

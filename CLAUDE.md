@@ -36,7 +36,7 @@ Project ref: `eysvljnbutnehnknczzq`. The CLI is used through `npx` and is alread
 - Query or apply SQL: `npx supabase db query --linked --project-ref eysvljnbutnehnknczzq "<sql>"` (or `-f file.sql`)
 - Security lint: `npx supabase db advisors --linked --project-ref eysvljnbutnehnknczzq --type security`
 - `supabase/estructura_actual.sql`: full snapshot of the public schema. Regenerate it after every DB change.
-- Auth emails go out through custom SMTP: a dedicated Gmail account with an app password, set in the dashboard. The Spanish templates are in `supabase/plantillas-correo/` and are pasted into the dashboard by hand. Auth error messages are translated in `lib/authErrors.ts`.
+- Auth emails go out through custom SMTP: a dedicated Gmail account with an app password, set in the dashboard. The Spanish templates are in `supabase/plantillas-correo/` and are pasted into the dashboard by hand. Auth error messages are translated in `lib/authErrors.ts`. Google sign-in is also enabled: the OAuth client lives in the user's Google Cloud project, and `/privacidad` is the privacy policy Google requires. The button is Google Identity Services (`components/GoogleSignInButton.tsx`) and calls `signInWithIdToken` with a nonce, so the consent screen says "Trailcamp" instead of the Supabase domain. It needs `NEXT_PUBLIC_GOOGLE_CLIENT_ID`, and local tests must run on port 3000, which is an authorized JS origin.
 - `supabase/migrations/`: changes applied to production, each with a matching undo script in `supabase/rollback/`. They were applied via `db query -f` wrapped in `begin/commit`, not via `db push`, so there is no remote migration history table.
 
 ## Architecture

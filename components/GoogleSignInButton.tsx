@@ -62,9 +62,16 @@ interface GoogleSignInButtonProps {
   onError: (message: string) => void;
   // Si el botón oficial no se puede mostrar (sin ID de cliente, bloqueador, sin conexión)
   fallback: React.ReactNode;
+  // Inicio de sesión por redirección (signInWithOAuth), por si el botón oficial no responde
+  onRedirectSignIn: () => void;
 }
 
-export default function GoogleSignInButton({ onSuccess, onError, fallback }: GoogleSignInButtonProps) {
+export default function GoogleSignInButton({
+  onSuccess,
+  onError,
+  fallback,
+  onRedirectSignIn,
+}: GoogleSignInButtonProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [failed, setFailed] = useState(!CLIENT_ID);
   const callbacks = useRef({ onSuccess, onError });
@@ -84,6 +91,9 @@ export default function GoogleSignInButton({ onSuccess, onError, fallback }: Goo
           client_id: CLIENT_ID,
           nonce: hashed,
           use_fedcm_for_prompt: true,
+          // En Chrome de computador el botón "Continuar como…" abre una ventana que Chrome
+          // bloquea como emergente. Con FedCM, Chrome muestra su propio cuadro y no hay ventana.
+          use_fedcm_for_button: true,
           callback: async (response: GoogleCredentialResponse) => {
             const { error } = await supabase.auth.signInWithIdToken({
               provider: "google",
@@ -117,5 +127,16 @@ export default function GoogleSignInButton({ onSuccess, onError, fallback }: Goo
 
   if (failed) return <>{fallback}</>;
 
-  return <div ref={containerRef} className="w-full flex justify-center min-h-[44px]" />;
+  return (
+    <div className="space-y-1.5">
+      <div ref={containerRef} className="w-full flex justify-center min-h-[44px]" />
+      {/* En algunos computadores el botón personalizado ("Continuar como…") no responde */}
+      <p className="text-center text-[11px] text-slate-500">
+        ¿El botón no responde?{" "}
+        <button type="button" onClick={onRedirectSignIn} className="text-slate-400 hover:text-emerald-300 underline">
+          Entrar con Google de otra forma
+        </button>
+      </p>
+    </div>
+  );
 }
