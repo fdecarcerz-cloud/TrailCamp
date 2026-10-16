@@ -6,6 +6,8 @@ import { formatDateRange } from "@/lib/dates";
 import AuthModal from "@/components/AuthModal";
 import NewPasswordModal from "@/components/NewPasswordModal";
 import TripNotes from "@/components/TripNotes";
+import Logo from "@/components/Logo";
+import InstallPrompt from "@/components/InstallPrompt";
 import ParticipantsSection from "@/components/ParticipantsSection";
 import GearSection from "@/components/GearSection";
 import CarpoolSection from "@/components/CarpoolSection";
@@ -408,9 +410,7 @@ Se borrarán también su equipo, material, autos y gastos. Esto no se puede desh
       {/* Header */}
       <header className="border-b border-slate-800 bg-slate-900/60 backdrop-blur-md px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between gap-3 sticky top-0 z-40">
         <div className="flex items-center gap-3 min-w-0">
-          <div className="bg-emerald-500/20 text-emerald-400 p-2 rounded-xl text-lg font-black tracking-wider border border-emerald-500/30">
-            TC
-          </div>
+          <Logo className="w-10 h-10 shrink-0 drop-shadow" />
           <div>
             <h1 className="text-base font-bold tracking-tight text-white flex items-center gap-2">
               TrailCamp <span className="hidden sm:inline text-[10px] bg-emerald-950 text-emerald-400 border border-emerald-800 px-1.5 py-0.5 rounded-full font-mono">v1.0</span>
@@ -627,14 +627,19 @@ Se borrarán también su equipo, material, autos y gastos. Esto no se puede desh
               </div>
             </>
           ) : (
-            <div className="h-64 border border-dashed border-slate-800 rounded-2xl flex items-center justify-center text-xs text-slate-500">
+            <div className="min-h-64 border border-dashed border-slate-800 rounded-2xl flex flex-col items-center justify-center gap-3 p-8 text-center text-xs text-slate-500">
+              {trips.length === 0 && <Logo className="w-20 h-20 drop-shadow-lg" />}
               {trips.length === 0
-                ? "Inicia sesión y crea tu primera expedición para empezar a planificar"
-                : "Selecciona una expedición de la lista lateral"}
+                ? currentUserEmail
+                  ? "Crea tu primera expedición con \"+ Nuevo viaje\", o pide que te inviten con tu correo."
+                  : "Inicia sesión para organizar tus viajes de camping con tu grupo."
+                : "Selecciona una expedición de la lista"}
             </div>
           )}
         </div>
       </div>
+
+      <InstallPrompt />
 
       <NewPasswordModal
         isOpen={isRecoveringPassword}
