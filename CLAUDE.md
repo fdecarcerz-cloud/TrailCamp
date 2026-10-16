@@ -41,6 +41,8 @@ Project ref: `eysvljnbutnehnknczzq`. The CLI is used through `npx` and is alread
 
 ## Architecture
 
+- Realtime: `page.tsx` subscribes to `postgres_changes` for the open trip, plus `participants` inserts for the user's own email, which surfaces new invitations. It refetches with a 400 ms debounce, and also when the tab becomes visible again. DELETE events carry only the id, so they are matched against the loaded rows. All 5 trip tables are in the `supabase_realtime` publication.
+
 - "Who am I" inside a trip is `myName` in `page.tsx`: the participant whose email matches the session email. It drives "Yo lo llevo", "Me subo" and hiding the invite button for yourself.
 
 TrailCamp is a single-page trip/expedition coordinator. The UI text and code comments are in Spanish, so keep new UI strings in Spanish.

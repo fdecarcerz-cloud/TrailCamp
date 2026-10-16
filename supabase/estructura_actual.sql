@@ -1,5 +1,5 @@
 -- Copia completa de la estructura de la base de datos de Supabase (schema public).
--- Foto tomada el 2026-10-14, después de aplicar migrations/20261016120000_gastos_division_y_categoria.sql.
+-- Foto tomada el 2026-10-16, después de aplicar migrations/20261016150000_tiempo_real.sql.
 -- Sirve para recrear la base de datos desde cero en un proyecto vacío (SQL Editor -> pegar -> Run).
 -- No contiene datos (viajes, gastos, etc.), solo la estructura.
 -- Actualizar este archivo cada vez que se cambie la base de datos.
@@ -335,3 +335,7 @@ revoke execute on function public.borrar_participante(bigint) from public, anon;
 grant execute on function public.borrar_participante(bigint) to authenticated;
 revoke execute on function public.guardar_notas_viaje(bigint, text) from public, anon;
 grant execute on function public.guardar_notas_viaje(bigint, text) to authenticated;
+
+-- Realtime (migración 20261016150000)
+alter publication supabase_realtime
+  add table public.trips, public.participants, public.gear, public.carpools, public.expenses;

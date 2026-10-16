@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/lib/supabase";
 import { formatDateRange } from "@/lib/dates";
 import AuthModal from "@/components/AuthModal";
@@ -197,6 +197,74 @@ export default function Home() {
       setExpenses([]);
     }
   }, [selectedTripId, fetchTripDetails]);
+
+  // Cambios en tiempo real (Supabase Realtime): si alguien más modifica el viaje abierto,
+  // se recarga solo. Los DELETE llegan solo con el id, así que se comparan con lo cargado.
+  const loadedRef = useRef({ participants, gear, carpools, expenses });
+  useEffect(() => {
+    loadedRef.current = { participants, gear, carpools, expenses };
+  }, [participants, gear, carpools, expenses]);
+
+  useEffect(() => {
+    if (!selectedTripId || !currentUserId) return;
+    const tripId = selectedTripId;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    // Varios cambios seguidos (o el propio guardado) se juntan en una sola recarga
+    const refresh = (alsoTrips = false) => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        if (alsoTrips) fetchTrips();
+        fetchTripDetails(tripId);
+      }, 400);
+    };
+
+    const channel = supabase.channel(`viaje-${tripId}`);
+    for (const table of ["participants", "gear", "carpools", "expenses"] as const) {
+      channel
+        .on("postgres_changes", { event: "INSERT", schema: "public", table, filter: `trip_id=eq.${tripId}` }, () => refresh())
+        .on("postgres_changes", { event: "UPDATE", schema: "public", table, filter: `trip_id=eq.${tripId}` }, () => refresh())
+        .on("postgres_changes", { event: "DELETE", schema: "public", table }, (payload) => {
+          const id = String((payload.old as { id?: unknown }).id);
+          if (loadedRef.current[table].some((row) => String(row.id) === id)) refresh();
+        });
+    }
+    channel
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "trips", filter: `id=eq.${tripId}` }, () =>
+        refresh(true)
+      )
+      .on("postgres_changes", { event: "DELETE", schema: "public", table: "trips" }, (payload) => {
+        if (String((payload.old as { id?: unknown }).id) === String(tripId)) fetchTrips();
+      })
+      .subscribe();
+
+    // En el celular la conexión se duerme con la pantalla apagada: al volver, recargar
+    const onVisible = () => {
+      if (document.visibilityState === "visible") refresh(true);
+    };
+    document.addEventListener("visibilitychange", onVisible);
+
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+      supabase.removeChannel(channel);
+    };
+  }, [selectedTripId, currentUserId, fetchTripDetails, fetchTrips]);
+
+  // Si alguien te agrega a su viaje mientras usas la app, el viaje aparece en tu lista
+  useEffect(() => {
+    if (!currentUserEmail) return;
+    const channel = supabase
+      .channel(`invitaciones-${currentUserEmail}`)
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "participants", filter: `email=eq.${currentUserEmail}` },
+        () => fetchTrips()
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [currentUserEmail, fetchTrips]);
 
   const openNewTripModal = () => {
     setEditingTripId(null);
