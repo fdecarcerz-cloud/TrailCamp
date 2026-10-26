@@ -66,6 +66,13 @@ export default function AppHeader({ backToHome = false }: { backToHome?: boolean
                 <p className="text-sm font-semibold text-white truncate">{displayName}</p>
                 <p className="text-[11px] text-slate-400 truncate">{email}</p>
               </div>
+              <Link
+                href="/estadisticas"
+                onClick={() => setMenuOpen(false)}
+                className="block px-4 py-2.5 text-sm text-slate-200 hover:bg-slate-800"
+              >
+                📊  Estadísticas
+              </Link>
               {item("👤  Mi cuenta", openProfile)}
               {item("🔑  Cambiar contraseña", openChangePassword)}
               {item("📲  Instalar la app", openInstall)}

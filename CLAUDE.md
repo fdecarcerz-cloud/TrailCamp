@@ -44,7 +44,8 @@ Project ref: `eysvljnbutnehnknczzq`. The CLI is used through `npx` and is alread
 TrailCamp is a camping-trip coordinator. The UI text and code comments are in Spanish, so keep new UI strings in Spanish.
 
 - **Routes:**
-  - `/` is Inicio (`components/home/HomeScreen.tsx`). It shows the next trip, cross-trip to-dos, upcoming and past trips, and stats. The math is in `lib/home.ts`.
+  - `/` is Inicio (`components/home/HomeScreen.tsx`). It shows the next trip, cross-trip to-dos, upcoming and past trips, and "Tus gastos" for the current trip (or the last one done). The math is in `lib/home.ts`, loaded by `components/home/useHomeSummary.ts`.
+  - `/estadisticas` (`components/home/StatsScreen.tsx`, linked from the ⋯ menu) shows the all-time stats: trips, nights, your share in total, by category and per trip, and your most frequent companion.
   - `/viaje/[id]` is one trip (`components/trip/TripScreen.tsx`, keyed by id). It holds the tabs, the notes, the creator-only edit/delete buttons, and the realtime subscription.
   - `/privacidad` is the privacy policy.
   - `/invitacion/[token]` is a personal invite link (`components/invite/InviteScreen.tsx`).

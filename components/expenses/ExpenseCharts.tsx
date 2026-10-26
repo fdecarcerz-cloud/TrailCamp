@@ -10,23 +10,28 @@ const CONSUMED_COLOR = "#d95926";
 
 // Parte del total por categoría: barra apilada horizontal + leyenda con montos (no torta)
 export function CategoryChart({ expenses }: { expenses: Expense[] }) {
-  const [active, setActive] = useState<Category | null>(null);
-  const totals = new Map<Category, number>();
+  const totals: Partial<Record<Category, number>> = {};
   expenses.forEach((e) => {
     const c = categoryOf(e);
-    totals.set(c, (totals.get(c) ?? 0) + (Number(e.amount) || 0));
+    totals[c] = (totals[c] ?? 0) + (Number(e.amount) || 0);
   });
-  const total = [...totals.values()].reduce((a, b) => a + b, 0);
+  return <CategoryBreakdown totals={totals} title="¿En qué se gastó?" />;
+}
+
+// Lo mismo a partir de montos ya sumados por categoría (p. ej. tu parte en todos los viajes)
+export function CategoryBreakdown({ totals, title }: { totals: Partial<Record<Category, number>>; title: string }) {
+  const [active, setActive] = useState<Category | null>(null);
+  const total = Object.values(totals).reduce((a, b) => a + (b ?? 0), 0);
   if (total <= 0) return null;
-  const rows = CATEGORIES.filter((c) => (totals.get(c) ?? 0) > 0).map((c) => ({
+  const rows = CATEGORIES.filter((c) => (totals[c] ?? 0) > 0).map((c) => ({
     category: c,
-    amount: totals.get(c) ?? 0,
-    pct: ((totals.get(c) ?? 0) / total) * 100,
+    amount: totals[c] ?? 0,
+    pct: ((totals[c] ?? 0) / total) * 100,
   }));
 
   return (
     <div className="bg-slate-950/60 border border-slate-800 p-4 rounded-xl space-y-3">
-      <span className="text-xs font-semibold text-white block">¿En qué se gastó?</span>
+      <span className="text-xs font-semibold text-white block">{title}</span>
 
       <div className="flex h-3 w-full gap-[2px]" role="img" aria-label="Gasto por categoría">
         {rows.map((r, i) => (

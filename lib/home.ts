@@ -1,8 +1,8 @@
 import type { Carpool, Expense, GearItem, Participant, Trip } from "@/lib/types";
 import { nightsOf, todayISO, tripStatus, type TripStatus } from "@/lib/dates";
-import { computeTransfers, summarize } from "@/lib/expenses";
+import { categoryOf, computeTransfers, sharesOf, summarize, type Category } from "@/lib/expenses";
 
-// Resumen de la pantalla de Inicio, a partir de todos los viajes del usuario.
+// Resumen de la pantalla de Inicio y de Estadísticas, a partir de todos los viajes del usuario.
 
 export interface TripCard {
   trip: Trip;
@@ -12,6 +12,8 @@ export interface TripCard {
   gearTotal: number;
   gearPacked: number;
   totalSpent: number;
+  // Tus números en este viaje (null si la app no sabe cuál eres en el equipo)
+  mine: { share: number; paid: number; balance: number } | null;
 }
 
 export interface Pending {
@@ -27,11 +29,14 @@ export interface HomeSummary {
   upcoming: TripCard[]; // próximos, sin el destacado
   past: TripCard[];
   pending: Pending[];
+  spendingTrip: TripCard | null; // el viaje en curso o, si no hay, el último realizado
   stats: {
     tripsDone: number;
     nights: number;
     mySpent: number;
+    myByCategory: Partial<Record<Category, number>>; // tu parte, sumando todos los viajes
     companion: { name: string; trips: number } | null;
+    cards: TripCard[]; // todos los viajes, del más reciente al más antiguo
   };
 }
 
@@ -59,6 +64,7 @@ export function buildHomeSummary(input: {
   const cards: TripCard[] = [];
   const pending: Pending[] = [];
   let mySpent = 0;
+  const myByCategory: Partial<Record<Category, number>> = {};
   const companions = new Map<string, { name: string; trips: number }>();
 
   for (const trip of trips) {
@@ -69,6 +75,15 @@ export function buildHomeSummary(input: {
     const myName = tParts.find((p) => isMe(p, userId, email))?.name ?? null;
     const status = tripStatus(trip.start_date, trip.end_date, today);
     const people = summarize(tParts, tExp);
+    const me = myName ? people.find((p) => p.name === myName) : undefined;
+
+    if (myName) {
+      for (const e of tExp) {
+        if (e.is_settlement) continue;
+        const share = sharesOf(e)[myName] ?? 0;
+        if (share > 0) myByCategory[categoryOf(e)] = (myByCategory[categoryOf(e)] ?? 0) + share;
+      }
+    }
 
     cards.push({
       trip,
@@ -78,6 +93,7 @@ export function buildHomeSummary(input: {
       gearTotal: tGear.length,
       gearPacked: tGear.filter((g) => g.status === "Empacado").length,
       totalSpent: tExp.filter((e) => !e.is_settlement).reduce((s, e) => s + (Number(e.amount) || 0), 0),
+      mine: me ? { share: me.consumed, paid: me.paid, balance: me.balance } : null,
     });
 
     const add = (icon: string, text: string, urgent = false) =>
@@ -85,7 +101,6 @@ export function buildHomeSummary(input: {
 
     // Deudas: también en viajes pasados, hasta que se paguen
     if (myName) {
-      const me = people.find((p) => p.name === myName);
       if (me) mySpent += me.consumed;
       for (const t of computeTransfers(people)) {
         if (t.from === myName) add("💸", `Le debes $${t.amount.toLocaleString("es-CL")} a ${t.to}`, true);
@@ -140,6 +155,7 @@ export function buildHomeSummary(input: {
   const upcoming = cards.filter((c) => c.status === "proximo").sort(byStart);
   const past = cards.filter((c) => c.status === "pasado").sort((a, b) => byStart(b, a));
   const featured = ongoing[0] ?? upcoming[0] ?? null;
+  const spendingTrip = [...ongoing, ...past].find((c) => c.mine) ?? null;
 
   const done = [...past, ...ongoing];
   const companion = [...companions.values()].sort((a, b) => b.trips - a.trips)[0] ?? null;
@@ -149,11 +165,14 @@ export function buildHomeSummary(input: {
     upcoming: [...ongoing, ...upcoming].filter((c) => c !== featured),
     past,
     pending: pending.sort((a, b) => Number(b.urgent) - Number(a.urgent)),
+    spendingTrip,
     stats: {
       tripsDone: past.length,
       nights: done.reduce((s, c) => s + nightsOf(c.trip.start_date, c.trip.end_date), 0),
       mySpent,
+      myByCategory,
       companion: companion && companion.trips > 0 ? companion : null,
+      cards: [...cards].sort((a, b) => byStart(b, a)),
     },
   };
 }

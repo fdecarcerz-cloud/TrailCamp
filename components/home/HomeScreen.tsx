@@ -1,60 +1,22 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
-import { supabase } from "@/lib/supabase";
 import { countdownLabel, formatDateRange } from "@/lib/dates";
-import { buildHomeSummary, type HomeSummary, type TripCard } from "@/lib/home";
+import type { TripCard } from "@/lib/home";
 import { clp } from "@/lib/expenses";
 import { useApp } from "@/components/app/AppProvider";
 import AppHeader from "@/components/app/AppHeader";
 import Logo from "@/components/Logo";
+import Stat from "@/components/home/Stat";
+import { useHomeSummary } from "@/components/home/useHomeSummary";
 
-// Pantalla de Inicio: próximo viaje, pendientes, próximos y pasados, y estadísticas.
+// Pantalla de Inicio: próximo viaje, pendientes, próximos, tus gastos del viaje actual y pasados.
+// Las estadísticas de todos los viajes están en /estadisticas (menú ⋯).
 export default function HomeScreen() {
-  const { authReady, userId, email, displayName, trips, tripsLoading, openAuth, openNewTrip } = useApp();
-  const [summary, setSummary] = useState<HomeSummary | null>(null);
+  const { authReady, userId, displayName, tripsLoading, openAuth, openNewTrip } = useApp();
+  const summary = useHomeSummary();
   const [showPast, setShowPast] = useState(false);
-
-  // Detalles de todos los viajes de una vez (RLS ya limita a los viajes del usuario)
-  const load = useCallback(async () => {
-    const ids = trips.map((t) => t.id);
-    if (ids.length === 0) {
-      setSummary(buildHomeSummary({ trips: [], participants: [], gear: [], carpools: [], expenses: [], email }));
-      return;
-    }
-    const [p, g, c, e] = await Promise.all([
-      supabase.from("participants").select("*").in("trip_id", ids),
-      supabase.from("gear").select("*").in("trip_id", ids),
-      supabase.from("carpools").select("*").in("trip_id", ids),
-      supabase.from("expenses").select("*").in("trip_id", ids),
-    ]);
-    setSummary(
-      buildHomeSummary({
-        trips,
-        participants: p.data ?? [],
-        gear: g.data ?? [],
-        carpools: c.data ?? [],
-        expenses: e.data ?? [],
-        email,
-        userId,
-      })
-    );
-  }, [trips, email, userId]);
-
-  useEffect(() => {
-    if (!userId || tripsLoading) return;
-    const t = setTimeout(load, 0);
-    // Al volver a la app (celular) se pone al día
-    const onVisible = () => {
-      if (document.visibilityState === "visible") load();
-    };
-    document.addEventListener("visibilitychange", onVisible);
-    return () => {
-      clearTimeout(t);
-      document.removeEventListener("visibilitychange", onVisible);
-    };
-  }, [userId, tripsLoading, load]);
 
   const firstName = displayName.split(" ")[0];
 
@@ -79,7 +41,7 @@ export default function HomeScreen() {
   } else if (tripsLoading || !summary) {
     body = <p className="text-center text-xs text-slate-500 mt-16 animate-pulse">Cargando tus viajes...</p>;
   } else {
-    const { featured, upcoming, past, pending, stats } = summary;
+    const { featured, upcoming, past, pending, spendingTrip } = summary;
     body = (
       <div className="max-w-3xl w-full mx-auto p-4 sm:p-6 space-y-6">
         <div className="flex items-end justify-between gap-3">
@@ -145,24 +107,7 @@ export default function HomeScreen() {
           </section>
         )}
 
-        {(stats.tripsDone > 0 || stats.mySpent > 0) && (
-          <section className="space-y-2">
-            <h2 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Tus estadísticas</h2>
-            <div className="grid grid-cols-2 gap-2">
-              <Stat value={String(stats.tripsDone)} label={stats.tripsDone === 1 ? "viaje realizado" : "viajes realizados"} />
-              <Stat value={String(stats.nights)} label={stats.nights === 1 ? "noche de camping" : "noches de camping"} />
-              <Stat value={clp(stats.mySpent)} label="tu parte de los gastos" />
-              <Stat
-                value={stats.companion ? stats.companion.name.split(" ")[0] : "—"}
-                label={
-                  stats.companion
-                    ? `tu compañero más frecuente (${stats.companion.trips} ${stats.companion.trips === 1 ? "viaje" : "viajes"})`
-                    : "compañero más frecuente"
-                }
-              />
-            </div>
-          </section>
-        )}
+        {spendingTrip?.mine && spendingTrip.totalSpent > 0 && <MySpending card={spendingTrip} />}
 
         {past.length > 0 && (
           <section className="space-y-2">
@@ -244,11 +189,29 @@ function TripRow({ card, muted = false }: { card: TripCard; muted?: boolean }) {
   );
 }
 
-function Stat({ value, label }: { value: string; label: string }) {
+// Tus gastos del viaje en curso o, si no hay, del último realizado
+function MySpending({ card }: { card: TripCard }) {
+  const { trip, mine } = card;
+  if (!mine) return null;
+  const bal = Math.round(mine.balance);
   return (
-    <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-3.5">
-      <p className="text-xl font-bold text-white truncate">{value}</p>
-      <p className="text-[11px] text-slate-400 leading-snug">{label}</p>
-    </div>
+    <section className="space-y-2">
+      <div className="flex items-baseline justify-between gap-3">
+        <h2 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Tus gastos</h2>
+        <Link href={`/viaje/${trip.id}`} className="text-[11px] text-slate-500 hover:text-slate-300 truncate">
+          {card.status === "en-curso" ? "Viaje en curso" : "Último viaje"}: {trip.name} ›
+        </Link>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <Stat value={clp(mine.share)} label="tu parte" />
+        <Stat value={clp(mine.paid)} label="lo que pagaste" />
+        <Stat
+          value={Math.abs(bal) <= 1 ? "✓ A mano" : clp(Math.abs(bal))}
+          label={Math.abs(bal) <= 1 ? "no debes ni te deben" : bal > 0 ? "te deben" : "debes"}
+          tone={Math.abs(bal) <= 1 ? undefined : bal > 0 ? "good" : "bad"}
+        />
+        <Stat value={clp(card.totalSpent)} label="gastó el grupo" />
+      </div>
+    </section>
   );
 }
