@@ -4,14 +4,17 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import type { Trip } from "@/lib/types";
+import type { Contact } from "@/lib/contacts";
 import { useApp } from "@/components/app/AppProvider";
+import FrequentContacts from "@/components/FrequentContacts";
 import { errorMessage } from "@/lib/errors";
 
 const inputClass =
   "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-emerald-500";
 
-// Crear o editar un viaje. Crear guarda user_id y suma al creador como Organizador con su
-// nombre de "Mi cuenta". Editar y borrar solo los permite RLS al creador.
+// Crear o editar un viaje. Crear guarda user_id, suma al creador como Organizador con su
+// nombre de "Mi cuenta" y a la gente marcada de otros viajes. Editar y borrar solo los
+// permite RLS al creador.
 export default function TripFormModal({ trip, onClose }: { trip: Trip | null; onClose: () => void }) {
   const router = useRouter();
   const { userId, email, displayName, fetchTrips } = useApp();
@@ -20,6 +23,7 @@ export default function TripFormModal({ trip, onClose }: { trip: Trip | null; on
   const [start, setStart] = useState(trip?.start_date ?? "");
   const [end, setEnd] = useState(trip?.end_date ?? "");
   const [saving, setSaving] = useState(false);
+  const [crew, setCrew] = useState<Contact[]>([]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -63,6 +67,21 @@ export default function TripFormModal({ trip, onClose }: { trip: Trip | null; on
         if (participantError) console.error("No se pudo sumar al organizador:", participantError.message);
       }
 
+      // Quienes tienen correo ya ven el viaje; al resto se le manda la invitación desde Equipo
+      if (data && crew.length > 0) {
+        const { error: crewError } = await supabase.from("participants").insert(
+          crew.map((c) => ({
+            trip_id: data.id,
+            name: c.name,
+            email: c.email,
+            phone: c.phone,
+            role: "Participante",
+            status: "Confirmado",
+          }))
+        );
+        if (crewError) alert("El viaje se creó, pero no se pudo sumar al equipo: " + crewError.message);
+      }
+
       await fetchTrips();
       onClose();
       if (data) router.push(`/viaje/${data.id}`);
@@ -75,7 +94,7 @@ export default function TripFormModal({ trip, onClose }: { trip: Trip | null; on
 
   return (
     <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md p-6 relative shadow-2xl">
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md max-h-[90dvh] overflow-y-auto p-6 relative shadow-2xl">
         <h3 className="text-base font-bold text-white mb-4">{trip ? "Editar viaje" : "Nuevo viaje"}</h3>
         <form onSubmit={handleSubmit} className="space-y-4 text-xs">
           <div>
@@ -124,6 +143,7 @@ export default function TripFormModal({ trip, onClose }: { trip: Trip | null; on
               />
             </div>
           </div>
+          {!trip && <FrequentContacts onChange={setCrew} />}
           <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
             <button
               type="button"
@@ -137,7 +157,13 @@ export default function TripFormModal({ trip, onClose }: { trip: Trip | null; on
               disabled={saving}
               className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold disabled:opacity-50"
             >
-              {saving ? "Guardando..." : trip ? "Guardar cambios" : "Crear viaje"}
+              {saving
+                ? "Guardando..."
+                : trip
+                  ? "Guardar cambios"
+                  : crew.length > 0
+                    ? `Crear viaje con ${crew.length} ${crew.length === 1 ? "persona" : "personas"}`
+                    : "Crear viaje"}
             </button>
           </div>
         </form>

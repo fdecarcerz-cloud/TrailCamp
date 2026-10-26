@@ -22,7 +22,8 @@ const idsOf = (p: Participant) =>
 
 export function frequentContacts(opts: {
   all: Participant[]; // participantes de todos tus viajes
-  tripId: string; // el viaje que se está armando
+  tripId: string | null; // el viaje que se está armando (null si aún no existe)
+  takenNames?: string[]; // nombres que ya se van a usar en el viaje (p. ej. el del organizador)
   userId: string | null;
   email: string | null;
 }): Contact[] {
@@ -67,7 +68,7 @@ export function frequentContacts(opts: {
 
   const here = all.filter((p) => String(p.trip_id) === String(tripId));
   const hereIds = new Set(here.flatMap(idsOf));
-  const hereNames = new Set(here.map((p) => norm(p.name)));
+  const hereNames = new Set([...here.map((p) => p.name), ...(opts.takenNames ?? [])].map(norm));
 
   const contacts: { contact: Contact; last: string }[] = [];
   for (const [key, rows] of groups) {

@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { supabase } from "@/lib/supabase";
 import AddFormToggle from "@/components/AddFormToggle";
-import FrequentContacts from "@/components/FrequentContacts";
 import { Participant } from "@/lib/types";
 import { formatPhone, normalizePhone, whatsappLink } from "@/lib/phone";
 import { errorMessage } from "@/lib/errors";
@@ -202,7 +201,6 @@ export default function ParticipantsSection({
     <div className="space-y-6">
       {/* Formulario para sumar integrante */}
       <AddFormToggle label="+ Sumar al equipo">
-        <FrequentContacts tripId={tripId} participants={participants} onRefresh={onRefresh} />
         <form
           onSubmit={handleAddParticipant}
           className="bg-slate-950/60 border border-slate-800 p-4 rounded-xl grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 items-end text-xs"
