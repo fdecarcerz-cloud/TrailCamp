@@ -4,6 +4,7 @@ import { useState } from "react";
 import { supabase } from "../lib/supabase";
 import { translateAuthError } from "@/lib/authErrors";
 import GoogleSignInButton from "@/components/GoogleSignInButton";
+import { errorMessage } from "@/lib/errors";
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -39,8 +40,8 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
       setInfoMsg(
         "Si hay una cuenta con ese correo, te llegará un enlace para crear una contraseña nueva. Revisa también la carpeta de spam."
       );
-    } catch (err: any) {
-      setErrorMsg(translateAuthError(err?.message));
+    } catch (err) {
+      setErrorMsg(translateAuthError(errorMessage(err, "")));
     } finally {
       setLoading(false);
     }
@@ -82,8 +83,8 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
       if (error) throw error;
       setNeedsConfirm(false);
       setInfoMsg(`Te reenviamos el correo de confirmación a ${email.trim()}. Revisa también spam.`);
-    } catch (err: any) {
-      setErrorMsg(translateAuthError(err?.message));
+    } catch (err) {
+      setErrorMsg(translateAuthError(errorMessage(err, "")));
     } finally {
       setLoading(false);
     }
@@ -142,9 +143,9 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
         onSuccess();
         onClose();
       }
-    } catch (err: any) {
-      setErrorMsg(translateAuthError(err?.message));
-      if ((err?.message ?? "").toLowerCase().includes("email not confirmed")) setNeedsConfirm(true);
+    } catch (err) {
+      setErrorMsg(translateAuthError(errorMessage(err, "")));
+      if (errorMessage(err, "").toLowerCase().includes("email not confirmed")) setNeedsConfirm(true);
     } finally {
       setLoading(false);
     }

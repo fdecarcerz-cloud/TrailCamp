@@ -4,6 +4,7 @@ import { useState } from "react";
 import { supabase } from "@/lib/supabase";
 import AddFormToggle from "@/components/AddFormToggle";
 import { Carpool, Participant } from "@/lib/types";
+import { errorMessage } from "@/lib/errors";
 
 interface CarpoolSectionProps {
   tripId: string;
@@ -107,8 +108,8 @@ export default function CarpoolSection({
       setDepartureTime("");
       setSeatsAvailable(3);
       onRefresh();
-    } catch (err: any) {
-      alert("Error agregando auto: " + (err?.message || "Error desconocido"));
+    } catch (err) {
+      alert("Error agregando auto: " + errorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -158,8 +159,8 @@ export default function CarpoolSection({
 
       setEditingId(null);
       onRefresh();
-    } catch (err: any) {
-      alert("Error actualizando auto: " + (err?.message || "Error desconocido"));
+    } catch (err) {
+      alert("Error actualizando auto: " + errorMessage(err));
     } finally {
       setSavingEdit(false);
     }
@@ -194,8 +195,8 @@ export default function CarpoolSection({
 
       if (error) throw error;
       onRefresh();
-    } catch (err: any) {
-      alert("Error actualizando asientos: " + (err?.message || "Error desconocido"));
+    } catch (err) {
+      alert("Error actualizando asientos: " + errorMessage(err));
     }
   };
 
@@ -205,8 +206,8 @@ export default function CarpoolSection({
       const { error } = await supabase.from("carpools").delete().eq("id", id);
       if (error) throw error;
       onRefresh();
-    } catch (err: any) {
-      alert("Error eliminando auto: " + (err?.message || "Error desconocido"));
+    } catch (err) {
+      alert("Error eliminando auto: " + errorMessage(err));
     }
   };
 

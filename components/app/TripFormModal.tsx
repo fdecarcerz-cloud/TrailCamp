@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import type { Trip } from "@/lib/types";
 import { useApp } from "@/components/app/AppProvider";
+import { errorMessage } from "@/lib/errors";
 
 const inputClass =
   "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-emerald-500";
@@ -65,8 +66,8 @@ export default function TripFormModal({ trip, onClose }: { trip: Trip | null; on
       await fetchTrips();
       onClose();
       if (data) router.push(`/viaje/${data.id}`);
-    } catch (err: any) {
-      alert("No se pudo guardar el viaje: " + (err?.message || "Error desconocido"));
+    } catch (err) {
+      alert("No se pudo guardar el viaje: " + errorMessage(err));
     } finally {
       setSaving(false);
     }

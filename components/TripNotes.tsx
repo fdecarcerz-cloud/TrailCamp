@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { errorMessage } from "@/lib/errors";
 
 interface TripNotesProps {
   tripId: string;
@@ -55,8 +56,8 @@ export default function TripNotes({ tripId, notes, onSaved }: TripNotesProps) {
       if (error) throw error;
       setEditing(false);
       onSaved();
-    } catch (err: any) {
-      alert("No se pudieron guardar las notas: " + (err?.message || "Error desconocido"));
+    } catch (err) {
+      alert("No se pudieron guardar las notas: " + errorMessage(err));
     } finally {
       setSaving(false);
     }

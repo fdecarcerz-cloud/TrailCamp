@@ -6,6 +6,7 @@ import AddFormToggle from "@/components/AddFormToggle";
 import FrequentContacts from "@/components/FrequentContacts";
 import { Participant } from "@/lib/types";
 import { formatPhone, normalizePhone, whatsappLink } from "@/lib/phone";
+import { errorMessage } from "@/lib/errors";
 
 type Role = Participant["role"];
 const ROLES: Role[] = ["Participante", "Guía", "Organizador"];
@@ -123,8 +124,8 @@ export default function ParticipantsSection({
       setInvitingId(data.id);
       setCopied(false);
       onRefresh();
-    } catch (err: any) {
-      alert("Error agregando participante: " + (err?.message || "Error desconocido"));
+    } catch (err) {
+      alert("Error agregando participante: " + errorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -167,8 +168,8 @@ export default function ParticipantsSection({
 
       setEditingId(null);
       onRefresh();
-    } catch (err: any) {
-      alert("No se pudo guardar: " + (err?.message || "Error desconocido"));
+    } catch (err) {
+      alert("No se pudo guardar: " + errorMessage(err));
     } finally {
       setSavingEdit(false);
     }
@@ -192,8 +193,8 @@ export default function ParticipantsSection({
       const { error } = await supabase.rpc("borrar_participante", { p_id: p.id });
       if (error) throw error;
       onRefresh();
-    } catch (err: any) {
-      alert(err?.message || "Error eliminando participante");
+    } catch (err) {
+      alert(errorMessage(err, "Error eliminando participante"));
     }
   };
 

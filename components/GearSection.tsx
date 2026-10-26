@@ -5,6 +5,7 @@ import { supabase } from "@/lib/supabase";
 import AddFormToggle from "@/components/AddFormToggle";
 import SuggestGearModal from "@/components/gear/SuggestGearModal";
 import { GearItem, Participant } from "@/lib/types";
+import { errorMessage } from "@/lib/errors";
 
 const PRIORITIES: GearItem["priority"][] = ["Imprescindible", "Importante", "Opcional"];
 
@@ -78,8 +79,8 @@ export default function GearSection({
       setQuantity(1);
       setAssignedTo("");
       onRefresh();
-    } catch (err: any) {
-      alert("Error agregando material: " + (err?.message || "Error desconocido"));
+    } catch (err) {
+      alert("Error agregando material: " + errorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -114,8 +115,8 @@ export default function GearSection({
 
       setEditingId(null);
       onRefresh();
-    } catch (err: any) {
-      alert("Error actualizando material: " + (err?.message || "Error desconocido"));
+    } catch (err) {
+      alert("Error actualizando material: " + errorMessage(err));
     } finally {
       setSavingEdit(false);
     }
@@ -131,7 +132,7 @@ export default function GearSection({
 
       if (error) throw error;
       onRefresh();
-    } catch (err: any) {
+    } catch (err) {
       console.error("Error al actualizar estado:", err);
     }
   };
@@ -146,8 +147,8 @@ export default function GearSection({
         .eq("id", item.id);
       if (error) throw error;
       onRefresh();
-    } catch (err: any) {
-      alert("No se pudo guardar: " + (err?.message || "Error desconocido"));
+    } catch (err) {
+      alert("No se pudo guardar: " + errorMessage(err));
     }
   };
 
@@ -157,7 +158,7 @@ export default function GearSection({
       const { error } = await supabase.from("gear").delete().eq("id", id);
       if (error) throw error;
       onRefresh();
-    } catch (err: any) {
+    } catch (err) {
       console.error("Error eliminando material:", err);
     }
   };

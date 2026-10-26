@@ -6,6 +6,7 @@ import AddFormToggle from "@/components/AddFormToggle";
 import ExpenseForm, { type ExpenseDraft } from "@/components/expenses/ExpenseForm";
 import { CategoryChart, PeopleChart } from "@/components/expenses/ExpenseCharts";
 import { Expense, Participant } from "@/lib/types";
+import { errorMessage } from "@/lib/errors";
 import {
   CATEGORY_INFO,
   type Transfer,
@@ -110,8 +111,8 @@ export default function ExpensesSection({
       if (error) throw error;
       setFormKey((k) => k + 1);
       onRefresh();
-    } catch (err: any) {
-      alert("Error guardando gasto: " + (err?.message || "Error desconocido"));
+    } catch (err) {
+      alert("Error guardando gasto: " + errorMessage(err));
     } finally {
       setSaving(false);
     }
@@ -124,8 +125,8 @@ export default function ExpensesSection({
       if (error) throw error;
       setEditingId(null);
       onRefresh();
-    } catch (err: any) {
-      alert("Error actualizando gasto: " + (err?.message || "Error desconocido"));
+    } catch (err) {
+      alert("Error actualizando gasto: " + errorMessage(err));
     } finally {
       setSaving(false);
     }
@@ -181,8 +182,8 @@ export default function ExpensesSection({
       if (error) throw error;
       setPayment(null);
       onRefresh();
-    } catch (err: any) {
-      alert("Error registrando el pago: " + (err?.message || "Error desconocido"));
+    } catch (err) {
+      alert("Error registrando el pago: " + errorMessage(err));
     } finally {
       setSavingPayment(false);
     }
