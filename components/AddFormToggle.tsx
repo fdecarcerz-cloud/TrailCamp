@@ -20,7 +20,7 @@ export default function AddFormToggle({ label, children }: { label: string; chil
       >
         {open ? "Cerrar" : label}
       </button>
-      <div className={open ? "" : "hidden sm:block"}>{children}</div>
+      <div className={`space-y-3 ${open ? "" : "hidden sm:block"}`}>{children}</div>
     </div>
   );
 }

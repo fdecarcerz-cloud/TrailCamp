@@ -22,6 +22,7 @@ export interface Participant {
   invite_token: string;
   role: "Organizador" | "Guía" | "Participante";
   status: "Confirmado" | "Pendiente" | "Cancelado";
+  created_at?: string;
 }
 
 export interface GearItem {
