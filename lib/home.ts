@@ -37,6 +37,10 @@ export interface HomeSummary {
 
 const sameEmail = (a?: string | null, b?: string | null) => !!a && !!b && a.toLowerCase() === b.toLowerCase();
 
+// El usuario dentro de un equipo: por la cuenta unida con el link de invitación o por su correo
+export const isMe = (p: Participant, userId?: string | null, email?: string | null) =>
+  (!!userId && p.user_id === userId) || sameEmail(p.email, email);
+
 export function buildHomeSummary(input: {
   trips: Trip[];
   participants: Participant[];
@@ -47,7 +51,7 @@ export function buildHomeSummary(input: {
   userId?: string | null;
   today?: string;
 }): HomeSummary {
-  const { trips, participants, gear, carpools, expenses, email } = input;
+  const { trips, participants, gear, carpools, expenses, email, userId } = input;
   const today = input.today ?? todayISO();
   const of = <T extends { trip_id: string }>(rows: T[], tripId: string) =>
     rows.filter((r) => String(r.trip_id) === String(tripId));
@@ -62,7 +66,7 @@ export function buildHomeSummary(input: {
     const tGear = of(gear, trip.id);
     const tCars = of(carpools, trip.id);
     const tExp = of(expenses, trip.id);
-    const myName = tParts.find((p) => sameEmail(p.email, email))?.name ?? null;
+    const myName = tParts.find((p) => isMe(p, userId, email))?.name ?? null;
     const status = tripStatus(trip.start_date, trip.end_date, today);
     const people = summarize(tParts, tExp);
 
@@ -123,8 +127,8 @@ export function buildHomeSummary(input: {
     // Solo en viajes donde se sabe cuál es el usuario; si no, podría contarse a sí mismo.
     if (status !== "proximo" && myName) {
       for (const p of tParts) {
-        if (sameEmail(p.email, email) || p.name === myName) continue;
-        const key = p.email?.toLowerCase() || p.name.toLowerCase();
+        if (isMe(p, userId, email) || p.name === myName) continue;
+        const key = p.user_id || p.email?.toLowerCase() || p.name.toLowerCase();
         const prev = companions.get(key);
         companions.set(key, { name: p.name, trips: (prev?.trips ?? 0) + 1 });
       }

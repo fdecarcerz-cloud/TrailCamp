@@ -57,7 +57,7 @@ export default function TripFormModal({ trip, onClose }: { trip: Trip | null; on
 
       if (data && email) {
         const { error: participantError } = await supabase.from("participants").insert([
-          { trip_id: data.id, name: displayName, email, role: "Organizador", status: "Confirmado" },
+          { trip_id: data.id, name: displayName, email, user_id: userId, role: "Organizador", status: "Confirmado" },
         ]);
         if (participantError) console.error("No se pudo sumar al organizador:", participantError.message);
       }

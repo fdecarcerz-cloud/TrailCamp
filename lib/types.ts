@@ -16,6 +16,10 @@ export interface Participant {
   trip_id: string;
   name: string;
   email?: string | null;
+  phone?: string | null;
+  // Cuenta unida al aceptar el link de invitación (null si aún no entra con el link)
+  user_id?: string | null;
+  invite_token: string;
   role: "Organizador" | "Guía" | "Participante";
   status: "Confirmado" | "Pendiente" | "Cancelado";
 }

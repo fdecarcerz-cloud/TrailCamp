@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import type { User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
 import type { Trip } from "@/lib/types";
@@ -9,6 +10,7 @@ import NewPasswordModal from "@/components/NewPasswordModal";
 import InstallPrompt from "@/components/InstallPrompt";
 import TripFormModal from "@/components/app/TripFormModal";
 import ProfileModal from "@/components/app/ProfileModal";
+import { pendingInvite } from "@/lib/invite";
 
 // Estado compartido por la pantalla de Inicio y la de cada viaje: sesión, nombre del
 // usuario, lista de viajes y las ventanas comunes (iniciar sesión, viaje nuevo, mi cuenta).
@@ -49,6 +51,8 @@ function nameFromUser(user: User | null): string {
 }
 
 export default function AppProvider({ children }: { children: ReactNode }) {
+  const router = useRouter();
+  const pathname = usePathname();
   const [authReady, setAuthReady] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [trips, setTrips] = useState<Trip[]>([]);
@@ -98,6 +102,14 @@ export default function AppProvider({ children }: { children: ReactNode }) {
     }, 0);
     return () => clearTimeout(t);
   }, [authReady, userId, fetchTrips]);
+
+  // Volver al link de invitación después de entrar (el enlace de confirmación del correo
+  // aterriza en el Inicio)
+  useEffect(() => {
+    if (!userId || pathname.startsWith("/invitacion/")) return;
+    const pending = pendingInvite();
+    if (pending) router.push(`/invitacion/${pending}`);
+  }, [userId, pathname, router]);
 
   // Si alguien te agrega a su viaje mientras usas la app, el viaje aparece solo
   useEffect(() => {

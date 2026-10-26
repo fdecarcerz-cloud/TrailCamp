@@ -1,5 +1,5 @@
 -- Copia completa de la estructura de la base de datos de Supabase (schema public).
--- Foto tomada el 2026-10-16, después de aplicar migrations/20261016150000_tiempo_real.sql.
+-- Foto tomada el 2026-10-26, después de aplicar migrations/20261026120000_invitar_por_celular.sql.
 -- Sirve para recrear la base de datos desde cero en un proyecto vacío (SQL Editor -> pegar -> Run).
 -- No contiene datos (viajes, gastos, etc.), solo la estructura.
 -- Actualizar este archivo cada vez que se cambie la base de datos.
@@ -53,7 +53,10 @@ create table if not exists public.participants (
   role text default 'Participante'::text not null,
   status text default 'Pendiente'::text not null,
   created_at timestamp with time zone default timezone('utc'::text, now()) not null,
-  email text
+  email text,
+  phone text,
+  user_id uuid,
+  invite_token uuid default gen_random_uuid() not null
 );
 
 create table if not exists public.trips (
@@ -91,11 +94,66 @@ alter table expenses add constraint expenses_trip_id_fkey FOREIGN KEY (trip_id) 
 
 alter table gear add constraint gear_trip_id_fkey FOREIGN KEY (trip_id) REFERENCES trips(id) ON DELETE CASCADE;
 
+alter table participants add constraint participants_phone_largo CHECK (((phone IS NULL) OR (length(phone) <= 20)));
+
 alter table participants add constraint participants_trip_id_fkey FOREIGN KEY (trip_id) REFERENCES trips(id) ON DELETE CASCADE;
+
+alter table participants add constraint participants_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE SET NULL;
 
 alter table trips add constraint trips_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE;
 
 CREATE UNIQUE INDEX participants_nombre_unico_por_viaje ON public.participants USING btree (trip_id, lower(btrim(name)));
+
+CREATE UNIQUE INDEX participants_invite_token_key ON public.participants USING btree (invite_token);
+
+CREATE UNIQUE INDEX participants_viaje_cuenta_key ON public.participants USING btree (trip_id, user_id) WHERE (user_id IS NOT NULL);
+
+CREATE OR REPLACE FUNCTION public.aceptar_invitacion(p_token uuid)
+ RETURNS bigint
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+declare
+  v_uid uuid := (select auth.uid());
+  v_email text := (select auth.jwt()) ->> 'email';
+  v_part public.participants%rowtype;
+  v_otro text;
+begin
+  if v_uid is null then
+    raise exception 'Inicia sesión para aceptar la invitación.';
+  end if;
+
+  select * into v_part from public.participants where invite_token = p_token;
+  if not found then
+    raise exception 'Este link de invitación no es válido. Pídele uno nuevo a quien te invitó.';
+  end if;
+
+  if v_part.user_id = v_uid then
+    return v_part.trip_id;
+  end if;
+  if v_part.user_id is not null then
+    raise exception 'Esta invitación ya la usó otra cuenta. Pídele a quien te invitó que lo revise.';
+  end if;
+
+  select name into v_otro from public.participants
+  where trip_id = v_part.trip_id and id <> v_part.id
+    and (user_id = v_uid or lower(email) = lower(v_email))
+  limit 1;
+  if found then
+    raise exception 'Ya estás en este viaje como "%".', v_otro;
+  end if;
+
+  -- El correo pasa a ser el de la cuenta, para que la app lo muestre y lo reconozca
+  update public.participants
+  set user_id = v_uid,
+      email = coalesce(v_email, email)
+  where id = v_part.id;
+
+  return v_part.trip_id;
+end;
+$function$
+;
 
 CREATE OR REPLACE FUNCTION public.borrar_participante(p_id bigint)
  RETURNS void
@@ -175,6 +233,21 @@ end;
 $function$
 ;
 
+CREATE OR REPLACE FUNCTION public.participante_nuevo_seguro()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SET search_path TO ''
+AS $function$
+begin
+  new.invite_token := gen_random_uuid();
+  if new.user_id is distinct from (select auth.uid()) then
+    new.user_id := null;
+  end if;
+  return new;
+end;
+$function$
+;
+
 CREATE OR REPLACE FUNCTION public.puede_ver_viaje(viaje_id bigint)
  RETURNS boolean
  LANGUAGE sql
@@ -187,12 +260,13 @@ AS $function$
   ) or exists (
     select 1 from public.participants p
     where p.trip_id = viaje_id
-      and lower(p.email) = lower((select auth.jwt()) ->> 'email')
+      and (p.user_id = (select auth.uid())
+        or lower(p.email) = lower((select auth.jwt()) ->> 'email'))
   );
 $function$
 ;
 
-CREATE OR REPLACE FUNCTION public.renombrar_participante(p_id bigint, p_nombre text, p_email text, p_rol text)
+CREATE OR REPLACE FUNCTION public.renombrar_participante(p_id bigint, p_nombre text, p_email text, p_rol text, p_telefono text DEFAULT NULL::text)
  RETURNS void
  LANGUAGE plpgsql
  SET search_path TO ''
@@ -217,6 +291,7 @@ begin
   update public.participants
   set name = v_nuevo,
       email = nullif(btrim(coalesce(p_email, '')), ''),
+      phone = case when p_telefono is null then phone else nullif(btrim(p_telefono), '') end,
       role = p_rol
   where id = p_id;
 
@@ -273,6 +348,23 @@ END;
 $function$
 ;
 
+CREATE OR REPLACE FUNCTION public.ver_invitacion(p_token uuid)
+ RETURNS TABLE(trip_id bigint, viaje text, destino text, inicio text, fin text, nombre text, ocupada boolean, es_mia boolean)
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+  select t.id, t.name, t.destination, t.start_date, t.end_date, p.name,
+    p.user_id is not null,
+    p.user_id is not null and p.user_id = (select auth.uid())
+  from public.participants p
+  join public.trips t on t.id = p.trip_id
+  where p.invite_token = p_token;
+$function$
+;
+
+CREATE TRIGGER participante_nuevo_seguro BEFORE INSERT ON public.participants FOR EACH ROW EXECUTE FUNCTION participante_nuevo_seguro();
+
 CREATE TRIGGER trg_sync_trip_legacy_dates BEFORE INSERT OR UPDATE ON public.trips FOR EACH ROW EXECUTE FUNCTION sync_trip_legacy_dates();
 
 CREATE TRIGGER trg_sync_trip_title_name BEFORE INSERT OR UPDATE ON public.trips FOR EACH ROW EXECUTE FUNCTION sync_trip_title_name();
@@ -322,15 +414,20 @@ create policy "Modificar mis viajes" on public.trips as PERMISSIVE for UPDATE to
   using ((auth.uid() = user_id));
 
 create policy "Ver mis viajes o donde participo" on public.trips as PERMISSIVE for SELECT to public
-  using (((auth.uid() = user_id) OR (id IN ( SELECT participants.trip_id
-   FROM participants
-  WHERE (participants.email = (auth.jwt() ->> 'email'::text))))));
+  using (((auth.uid() = user_id) OR (id IN ( SELECT p.trip_id
+   FROM participants p
+  WHERE ((p.user_id = auth.uid()) OR (lower(p.email) = lower((auth.jwt() ->> 'email'::text))))))));
 revoke execute on function public.puede_ver_viaje(bigint) from public, anon;
 grant execute on function public.puede_ver_viaje(bigint) to authenticated;
 revoke execute on function public.es_creador_viaje(bigint) from public, anon;
 grant execute on function public.es_creador_viaje(bigint) to authenticated;
-revoke execute on function public.renombrar_participante(bigint, text, text, text) from public, anon;
-grant execute on function public.renombrar_participante(bigint, text, text, text) to authenticated;
+revoke execute on function public.renombrar_participante(bigint, text, text, text, text) from public, anon;
+grant execute on function public.renombrar_participante(bigint, text, text, text, text) to authenticated;
+revoke execute on function public.aceptar_invitacion(uuid) from public, anon;
+grant execute on function public.aceptar_invitacion(uuid) to authenticated;
+revoke execute on function public.ver_invitacion(uuid) from public;
+grant execute on function public.ver_invitacion(uuid) to anon, authenticated;
+revoke execute on function public.participante_nuevo_seguro() from public, anon, authenticated;
 revoke execute on function public.borrar_participante(bigint) from public, anon;
 grant execute on function public.borrar_participante(bigint) to authenticated;
 revoke execute on function public.guardar_notas_viaje(bigint, text) from public, anon;

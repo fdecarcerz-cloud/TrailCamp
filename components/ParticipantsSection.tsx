@@ -4,6 +4,7 @@ import { useState } from "react";
 import { supabase } from "@/lib/supabase";
 import AddFormToggle from "@/components/AddFormToggle";
 import { Participant } from "@/lib/types";
+import { formatPhone, normalizePhone, whatsappLink } from "@/lib/phone";
 
 type Role = Participant["role"];
 const ROLES: Role[] = ["Participante", "Guía", "Organizador"];
@@ -24,6 +25,8 @@ interface ParticipantsSectionProps {
 
 const normalize = (s: string) => s.trim().toLowerCase();
 
+const PHONE_HELP = "Revisa el celular. Escríbelo como 9 1234 5678, o con + y el código del país si no es de Chile.";
+
 // El nombre es la llave que usan gastos, material y autos: no puede repetirse en un viaje
 const nameTaken = (participants: Participant[], name: string, exceptId?: string) =>
   participants.some((p) => p.id !== exceptId && normalize(p.name) === normalize(name));
@@ -38,22 +41,19 @@ export default function ParticipantsSection({
   myEmail,
   onRefresh,
 }: ParticipantsSectionProps) {
-  // Invitación por persona: incluye el correo exacto con que debe crear su cuenta
+  // Invitación por persona: un link propio que une su cuenta (Google o correo) con su lugar
   const [invitingId, setInvitingId] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
   const inviteMessage = (p: Participant) => {
-    // Lleva directo al viaje (si no ha iniciado sesión, ahí mismo se le pide)
     const origin = typeof window !== "undefined" ? window.location.origin : "https://trail-camp.vercel.app";
-    const url = `${origin}/viaje/${tripId}`;
+    const url = `${origin}/invitacion/${p.invite_token}`;
     return [
       `¡Hola ${p.name}! Te sumé al viaje "${tripName}"${tripDetails ? ` (${tripDetails})` : ""} en TrailCamp, donde organizamos el material, los autos y los gastos.`,
       "",
-      `1. Entra a ${url}`,
-      `2. Crea tu cuenta (o inicia sesión) con este correo: ${p.email}`,
-      "3. Vas a ver el viaje en tu lista.",
+      `Entra con este link para unirte: ${url}`,
       "",
-      "Importante: usa ese mismo correo, si no, no te va a aparecer el viaje.",
+      "Puedes entrar con Google o con tu correo. El link es solo para ti.",
     ].join("\n");
   };
 
@@ -69,6 +69,7 @@ export default function ParticipantsSection({
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
   const [role, setRole] = useState<Role>("Participante");
   const [loading, setLoading] = useState(false);
 
@@ -76,6 +77,7 @@ export default function ParticipantsSection({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [editEmail, setEditEmail] = useState("");
+  const [editPhone, setEditPhone] = useState("");
   const [editRole, setEditRole] = useState<Role>("Participante");
   const [savingEdit, setSavingEdit] = useState(false);
 
@@ -87,24 +89,38 @@ export default function ParticipantsSection({
       alert(`Ya hay alguien llamado "${name.trim()}" en este viaje. Usa un nombre distinto (por ejemplo, con el apellido).`);
       return;
     }
+    const cleanPhone = phone.trim() ? normalizePhone(phone) : null;
+    if (phone.trim() && !cleanPhone) {
+      alert(PHONE_HELP);
+      return;
+    }
 
     setLoading(true);
     try {
-      const { error } = await supabase.from("participants").insert([
-        {
-          trip_id: tripId,
-          name: name.trim(),
-          email: email.trim() || null,
-          role,
-          status: "Confirmado",
-        },
-      ]);
+      const { data, error } = await supabase
+        .from("participants")
+        .insert([
+          {
+            trip_id: tripId,
+            name: name.trim(),
+            email: email.trim() || null,
+            phone: cleanPhone,
+            role,
+            status: "Confirmado",
+          },
+        ])
+        .select()
+        .single();
 
       if (error) throw error;
 
       setName("");
       setEmail("");
+      setPhone("");
       setRole("Participante");
+      // Queda abierta su invitación, lista para mandarla
+      setInvitingId(data.id);
+      setCopied(false);
       onRefresh();
     } catch (err: any) {
       alert("Error agregando participante: " + (err?.message || "Error desconocido"));
@@ -117,6 +133,7 @@ export default function ParticipantsSection({
     setEditingId(p.id);
     setEditName(p.name);
     setEditEmail(p.email ?? "");
+    setEditPhone(p.phone ? formatPhone(p.phone) : "");
     setEditRole(p.role);
   };
 
@@ -129,6 +146,11 @@ export default function ParticipantsSection({
       alert(`Ya hay alguien llamado "${editName.trim()}" en este viaje. Usa un nombre distinto.`);
       return;
     }
+    const cleanPhone = editPhone.trim() ? normalizePhone(editPhone) : "";
+    if (cleanPhone === null) {
+      alert(PHONE_HELP);
+      return;
+    }
 
     setSavingEdit(true);
     try {
@@ -138,6 +160,7 @@ export default function ParticipantsSection({
         p_nombre: editName.trim(),
         p_email: editEmail.trim(),
         p_rol: editRole,
+        p_telefono: cleanPhone,
       });
       if (error) throw error;
 
@@ -150,16 +173,11 @@ export default function ParticipantsSection({
     }
   };
 
-  // "Soy yo": le pone el correo de la sesión a una persona sin correo (mismo nombre y rol)
+  // "Soy yo": une tu cuenta con esa persona, igual que si abrieras su link de invitación
   const handleThisIsMe = async (p: Participant) => {
     if (!myEmail) return;
-    if (!confirm(`¿Eres "${p.name}"? Se le pondrá tu correo (${myEmail}) para que la app te reconozca en este viaje.`)) return;
-    const { error } = await supabase.rpc("renombrar_participante", {
-      p_id: p.id,
-      p_nombre: p.name,
-      p_email: myEmail,
-      p_rol: p.role,
-    });
+    if (!confirm(`¿Eres "${p.name}"? Se unirá a tu cuenta (${myEmail}) para que la app te reconozca en este viaje.`)) return;
+    const { error } = await supabase.rpc("aceptar_invitacion", { p_token: p.invite_token });
     if (error) alert("No se pudo guardar: " + error.message);
     else onRefresh();
   };
@@ -184,7 +202,7 @@ export default function ParticipantsSection({
       <AddFormToggle label="+ Sumar al equipo">
         <form
           onSubmit={handleAddParticipant}
-          className="bg-slate-950/60 border border-slate-800 p-4 rounded-xl grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 items-end text-xs"
+          className="bg-slate-950/60 border border-slate-800 p-4 rounded-xl grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 items-end text-xs"
         >
           <div>
             <label className="text-slate-400 block mb-1">Nombre</label>
@@ -199,7 +217,20 @@ export default function ParticipantsSection({
           </div>
 
           <div>
-            <label className="text-slate-400 block mb-1">Email (para que vea el viaje)</label>
+            <label className="text-slate-400 block mb-1">Celular (para invitar por WhatsApp)</label>
+            <input
+              type="tel"
+              inputMode="tel"
+              autoComplete="off"
+              placeholder="9 1234 5678"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
+            />
+          </div>
+
+          <div>
+            <label className="text-slate-400 block mb-1">Email (opcional)</label>
             <input
               type="email"
               placeholder="sofia@email.com"
@@ -268,6 +299,17 @@ export default function ParticipantsSection({
                     />
                   </div>
                   <div>
+                    <label className="text-slate-400 block mb-0.5">Celular</label>
+                    <input
+                      type="tel"
+                      inputMode="tel"
+                      value={editPhone}
+                      onChange={(e) => setEditPhone(e.target.value)}
+                      placeholder="Sin celular"
+                      className="w-full bg-slate-950 border border-slate-700 rounded-md px-2 py-1 text-white"
+                    />
+                  </div>
+                  <div>
                     <label className="text-slate-400 block mb-0.5">Rol</label>
                     <select
                       value={editRole}
@@ -317,14 +359,12 @@ export default function ParticipantsSection({
                       {p.role}
                     </span>
                   </div>
-                  {p.email ? (
-                    <div className="text-[11px] text-slate-400 truncate">{p.email}</div>
-                  ) : (
-                    <div className="text-[11px] text-amber-400">
-                      ⚠️ Sin correo: no puede ver el viaje desde su cuenta
-                    </div>
+                  {p.email && <div className="text-[11px] text-slate-400 truncate">{p.email}</div>}
+                  {p.phone && <div className="text-[11px] text-slate-400">{formatPhone(p.phone)}</div>}
+                  {!p.user_id && !p.email && (
+                    <div className="text-[11px] text-amber-400">⚠️ Todavía no entra: mándale su invitación</div>
                   )}
-                  {!p.email && !myName && isCreator && myEmail && (
+                  {!p.user_id && !myName && isCreator && myEmail && (
                     <button
                       onClick={() => handleThisIsMe(p)}
                       className="mt-1.5 text-[11px] font-semibold bg-sky-900/60 hover:bg-sky-800 text-sky-200 border border-sky-800 px-2 py-0.5 rounded-md"
@@ -353,7 +393,7 @@ export default function ParticipantsSection({
                 )}
               </div>
 
-              {p.email && p.name !== myName && invitingId !== p.id && (
+              {!p.user_id && p.name !== myName && invitingId !== p.id && (
                 <button
                   onClick={() => {
                     setInvitingId(p.id);
@@ -365,17 +405,17 @@ export default function ParticipantsSection({
                 </button>
               )}
 
-              {invitingId === p.id && p.email && (
+              {invitingId === p.id && (
                 <div className="bg-slate-950 border border-slate-800 rounded-lg p-2.5 space-y-2">
                   <p className="text-[11px] text-slate-300 whitespace-pre-line select-all">{inviteMessage(p)}</p>
                   <div className="flex flex-wrap gap-2">
                     <a
-                      href={`https://wa.me/?text=${encodeURIComponent(inviteMessage(p))}`}
+                      href={whatsappLink(inviteMessage(p), p.phone)}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-[11px] font-semibold bg-emerald-600 hover:bg-emerald-500 text-white px-2.5 py-1 rounded-md"
                     >
-                      Enviar por WhatsApp
+                      {p.phone ? `Enviar por WhatsApp a ${formatPhone(p.phone)}` : "Enviar por WhatsApp"}
                     </a>
                     <button
                       onClick={() => handleCopyInvite(p)}

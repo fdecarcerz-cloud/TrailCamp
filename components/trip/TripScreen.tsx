@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { formatDateRange, countdownLabel } from "@/lib/dates";
+import { isMe } from "@/lib/home";
 import type { Carpool, Expense, GearItem, Participant } from "@/lib/types";
 import { useApp } from "@/components/app/AppProvider";
 import AppHeader from "@/components/app/AppHeader";
@@ -113,9 +114,8 @@ export default function TripScreen({ tripId }: { tripId: string }) {
     router.replace("/");
   };
 
-  // Quién es el usuario dentro del equipo del viaje (se reconoce por su email)
-  const myName =
-    participants.find((p) => !!email && p.email?.toLowerCase() === email.toLowerCase())?.name ?? null;
+  // Quién es el usuario dentro del equipo del viaje (por su cuenta o su email)
+  const myName = participants.find((p) => isMe(p, userId, email))?.name ?? null;
 
   const message = (text: string, action?: React.ReactNode) => (
     <div className="max-w-md mx-auto mt-16 flex flex-col items-center gap-4 text-center text-sm text-slate-400 px-4">
@@ -130,7 +130,7 @@ export default function TripScreen({ tripId }: { tripId: string }) {
     body = <p className="text-center text-xs text-slate-500 mt-16 animate-pulse">Cargando viaje...</p>;
   } else if (!userId) {
     body = message(
-      "Inicia sesión con el correo con que te invitaron para ver este viaje.",
+      "Inicia sesión para ver este viaje. Si te invitaron por WhatsApp, abre el link de la invitación.",
       <button onClick={openAuth} className="bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs px-5 py-2.5 rounded-xl">
         Entrar
       </button>
