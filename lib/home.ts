@@ -29,7 +29,7 @@ export interface HomeSummary {
   upcoming: TripCard[]; // próximos, sin el destacado
   past: TripCard[];
   pending: Pending[];
-  spendingTrip: TripCard | null; // el viaje en curso o, si no hay, el último realizado
+  recentTrip: TripCard | null; // el viaje en curso o, si no hay, el último realizado
   stats: {
     tripsDone: number;
     nights: number;
@@ -155,7 +155,7 @@ export function buildHomeSummary(input: {
   const upcoming = cards.filter((c) => c.status === "proximo").sort(byStart);
   const past = cards.filter((c) => c.status === "pasado").sort((a, b) => byStart(b, a));
   const featured = ongoing[0] ?? upcoming[0] ?? null;
-  const spendingTrip = [...ongoing, ...past].find((c) => c.mine) ?? null;
+  const recentTrip = ongoing[0] ?? past[0] ?? null;
 
   const done = [...past, ...ongoing];
   const companion = [...companions.values()].sort((a, b) => b.trips - a.trips)[0] ?? null;
@@ -165,7 +165,7 @@ export function buildHomeSummary(input: {
     upcoming: [...ongoing, ...upcoming].filter((c) => c !== featured),
     past,
     pending: pending.sort((a, b) => Number(b.urgent) - Number(a.urgent)),
-    spendingTrip,
+    recentTrip,
     stats: {
       tripsDone: past.length,
       nights: done.reduce((s, c) => s + nightsOf(c.trip.start_date, c.trip.end_date), 0),

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { countdownLabel, formatDateRange } from "@/lib/dates";
+import { countdownLabel, formatDateRange, nightsOf } from "@/lib/dates";
 import type { TripCard } from "@/lib/home";
 import { clp } from "@/lib/expenses";
 import { useApp } from "@/components/app/AppProvider";
@@ -41,7 +41,7 @@ export default function HomeScreen() {
   } else if (tripsLoading || !summary) {
     body = <p className="text-center text-xs text-slate-500 mt-16 animate-pulse">Cargando tus viajes...</p>;
   } else {
-    const { featured, upcoming, past, pending, spendingTrip } = summary;
+    const { featured, upcoming, past, pending, recentTrip } = summary;
     body = (
       <div className="max-w-3xl w-full mx-auto p-4 sm:p-6 space-y-6">
         <div className="flex items-end justify-between gap-3">
@@ -107,7 +107,7 @@ export default function HomeScreen() {
           </section>
         )}
 
-        {spendingTrip?.mine && spendingTrip.totalSpent > 0 && <MySpending card={spendingTrip} />}
+        {recentTrip && <RecentTripStats card={recentTrip} />}
 
         {past.length > 0 && (
           <section className="space-y-2">
@@ -189,29 +189,47 @@ function TripRow({ card, muted = false }: { card: TripCard; muted?: boolean }) {
   );
 }
 
-// Tus gastos del viaje en curso o, si no hay, del último realizado
-function MySpending({ card }: { card: TripCard }) {
+// Lo clave del viaje en curso o, si no hay, del último realizado. El histórico está en /estadisticas
+function RecentTripStats({ card }: { card: TripCard }) {
   const { trip, mine } = card;
-  if (!mine) return null;
-  const bal = Math.round(mine.balance);
+  const nights = nightsOf(trip.start_date, trip.end_date);
+  const bal = Math.round(mine?.balance ?? 0);
   return (
     <section className="space-y-2">
       <div className="flex items-baseline justify-between gap-3">
-        <h2 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Tus gastos</h2>
+        <h2 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Tus estadísticas</h2>
         <Link href={`/viaje/${trip.id}`} className="text-[11px] text-slate-500 hover:text-slate-300 truncate">
           {card.status === "en-curso" ? "Viaje en curso" : "Último viaje"}: {trip.name} ›
         </Link>
       </div>
       <div className="grid grid-cols-2 gap-2">
-        <Stat value={clp(mine.share)} label="tu parte" />
-        <Stat value={clp(mine.paid)} label="lo que pagaste" />
         <Stat
-          value={Math.abs(bal) <= 1 ? "✓ A mano" : clp(Math.abs(bal))}
-          label={Math.abs(bal) <= 1 ? "no debes ni te deben" : bal > 0 ? "te deben" : "debes"}
-          tone={Math.abs(bal) <= 1 ? undefined : bal > 0 ? "good" : "bad"}
+          value={String(nights)}
+          label={
+            (nights === 1 ? "noche" : "noches") +
+            (mine ? ` con ${card.people} ${card.people === 1 ? "persona" : "personas"}` : "")
+          }
         />
         <Stat value={clp(card.totalSpent)} label="gastó el grupo" />
+        {mine ? (
+          <>
+            <Stat value={clp(mine.share)} label="tu parte" />
+            <Stat
+              value={Math.abs(bal) <= 1 ? "✓ A mano" : clp(Math.abs(bal))}
+              label={Math.abs(bal) <= 1 ? "no debes ni te deben" : bal > 0 ? "te deben" : "debes"}
+              tone={Math.abs(bal) <= 1 ? undefined : bal > 0 ? "good" : "bad"}
+            />
+          </>
+        ) : (
+          <>
+            <Stat value={String(card.people)} label={card.people === 1 ? "persona" : "personas"} />
+            <Stat value={`${card.gearPacked}/${card.gearTotal}`} label="cosas empacadas" />
+          </>
+        )}
       </div>
+      <Link href="/estadisticas" className="block text-center text-[11px] font-semibold text-emerald-400 hover:text-emerald-300 py-1">
+        Ver estadísticas de todos tus viajes →
+      </Link>
     </section>
   );
 }
