@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { formatDateRange, countdownLabel } from "@/lib/dates";
 import { isMe } from "@/lib/home";
+import { removeReceipts } from "@/lib/receipts";
 import type { Carpool, Expense, GearItem, Participant } from "@/lib/types";
 import { useApp } from "@/components/app/AppProvider";
 import AppHeader from "@/components/app/AppHeader";
@@ -105,6 +106,8 @@ export default function TripScreen({ tripId }: { tripId: string }) {
       `¿Borrar "${trip.name}"?\n\nSe borrarán también su equipo, material, autos y gastos. Esto no se puede deshacer.`
     );
     if (!ok) return;
+    // Las fotos de boletas van primero: sin el viaje ya no hay permiso sobre su carpeta
+    await removeReceipts(expenses.map((e) => e.receipt_path));
     const { error } = await supabase.from("trips").delete().eq("id", trip.id);
     if (error) {
       alert("Error al borrar el viaje: " + error.message);

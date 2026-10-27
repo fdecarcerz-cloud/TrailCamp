@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Expense, Participant } from "@/lib/types";
+import { ReceiptThumb } from "@/components/expenses/Receipt";
 import {
   CATEGORIES,
   CATEGORY_INFO,
@@ -21,6 +22,9 @@ export interface ExpenseDraft {
   split_mode: SplitMode;
   split_values: number[] | null;
   category: Category;
+  // Foto de la boleta: una nueva para subir, o quitar la que había (si no, queda igual)
+  photo: File | null;
+  removePhoto: boolean;
 }
 
 interface ExpenseFormProps {
@@ -69,6 +73,16 @@ export default function ExpenseForm({
   );
   const [pickingCategory, setPickingCategory] = useState(false);
   const [error, setError] = useState("");
+
+  // Foto opcional de la boleta
+  const [photo, setPhoto] = useState<File | null>(null);
+  const [removePhoto, setRemovePhoto] = useState(false);
+  const fileInput = useRef<HTMLInputElement>(null);
+  const photoPreview = useMemo(() => (photo ? URL.createObjectURL(photo) : null), [photo]);
+  useEffect(() => () => {
+    if (photoPreview) URL.revokeObjectURL(photoPreview);
+  }, [photoPreview]);
+  const savedPhoto = !photo && !removePhoto ? (initial?.receipt_path ?? null) : null;
 
   const total = Number(amount) || 0;
   const category = categoryOverride ?? guessCategory(description);
@@ -128,6 +142,8 @@ export default function ExpenseForm({
       split_mode: mode,
       split_values: mode === "igual" ? null : people.map(valueOf),
       category,
+      photo,
+      removePhoto: removePhoto && !photo,
     });
   };
 
@@ -268,6 +284,54 @@ export default function ExpenseForm({
           <p className={remaining > 0 ? "text-amber-400" : "text-rose-400"}>
             {remaining > 0 ? `Faltan ${clp(remaining)} por repartir` : `Sobran ${clp(-remaining)}`}
           </p>
+        )}
+      </div>
+
+      <div className="space-y-1.5">
+        <span className="text-slate-400 block">Foto de la boleta (opcional)</span>
+        <input
+          ref={fileInput}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) {
+              setPhoto(file);
+              setRemovePhoto(false);
+            }
+            e.target.value = ""; // para poder elegir la misma foto otra vez
+          }}
+        />
+        {photoPreview || savedPhoto ? (
+          <div className="flex items-center gap-3">
+            <ReceiptThumb src={photoPreview ?? undefined} path={savedPhoto} />
+            <button
+              type="button"
+              onClick={() => fileInput.current?.click()}
+              className="text-slate-300 hover:text-white"
+            >
+              Cambiar
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setPhoto(null);
+                setRemovePhoto(true);
+              }}
+              className="text-slate-500 hover:text-rose-400"
+            >
+              Quitar
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => fileInput.current?.click()}
+            className="px-3 py-2 rounded-lg border border-dashed border-slate-700 text-slate-300 hover:border-slate-500 hover:text-white"
+          >
+            📷 Agregar foto
+          </button>
         )}
       </div>
 

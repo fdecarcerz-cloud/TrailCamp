@@ -1,5 +1,6 @@
 -- Copia completa de la estructura de la base de datos de Supabase (schema public).
--- Foto tomada el 2026-10-26, después de aplicar migrations/20261026120000_invitar_por_celular.sql.
+-- Foto tomada el 2026-10-27, después de aplicar migrations/20261027120000_fotos_de_boletas.sql.
+-- Incluye al final el bucket de Storage "boletas" y sus políticas.
 -- Sirve para recrear la base de datos desde cero en un proyecto vacío (SQL Editor -> pegar -> Run).
 -- No contiene datos (viajes, gastos, etc.), solo la estructura.
 -- Actualizar este archivo cada vez que se cambie la base de datos.
@@ -31,7 +32,8 @@ create table if not exists public.expenses (
   is_settlement boolean default false not null,
   split_mode text default 'igual'::text not null,
   split_values numeric[],
-  category text
+  category text,
+  receipt_path text
 );
 
 create table if not exists public.gear (
@@ -248,6 +250,20 @@ end;
 $function$
 ;
 
+CREATE OR REPLACE FUNCTION public.puede_ver_boleta(ruta text)
+ RETURNS boolean
+ LANGUAGE sql
+ STABLE
+ SET search_path TO ''
+AS $function$
+  select case
+    when (storage.foldername(ruta))[1] ~ '^[0-9]+$'
+      then public.puede_ver_viaje(((storage.foldername(ruta))[1])::bigint)
+    else false
+  end;
+$function$
+;
+
 CREATE OR REPLACE FUNCTION public.puede_ver_viaje(viaje_id bigint)
  RETURNS boolean
  LANGUAGE sql
@@ -428,6 +444,8 @@ grant execute on function public.aceptar_invitacion(uuid) to authenticated;
 revoke execute on function public.ver_invitacion(uuid) from public;
 grant execute on function public.ver_invitacion(uuid) to anon, authenticated;
 revoke execute on function public.participante_nuevo_seguro() from public, anon, authenticated;
+revoke execute on function public.puede_ver_boleta(text) from public, anon;
+grant execute on function public.puede_ver_boleta(text) to authenticated;
 revoke execute on function public.borrar_participante(bigint) from public, anon;
 grant execute on function public.borrar_participante(bigint) to authenticated;
 revoke execute on function public.guardar_notas_viaje(bigint, text) from public, anon;
@@ -436,3 +454,16 @@ grant execute on function public.guardar_notas_viaje(bigint, text) to authentica
 -- Realtime (migración 20261016150000)
 alter publication supabase_realtime
   add table public.trips, public.participants, public.gear, public.carpools, public.expenses;
+
+-- Storage: fotos de boletas (migración 20261027120000). Bucket privado, una carpeta por viaje.
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('boletas', 'boletas', false, 5242880, array['image/jpeg', 'image/png', 'image/webp']);
+
+create policy "Boletas: borrar" on storage.objects as PERMISSIVE for DELETE to authenticated
+  using (((bucket_id = 'boletas'::text) AND puede_ver_boleta(name)));
+
+create policy "Boletas: subir" on storage.objects as PERMISSIVE for INSERT to authenticated
+  with check (((bucket_id = 'boletas'::text) AND puede_ver_boleta(name)));
+
+create policy "Boletas: ver" on storage.objects as PERMISSIVE for SELECT to authenticated
+  using (((bucket_id = 'boletas'::text) AND puede_ver_boleta(name)));

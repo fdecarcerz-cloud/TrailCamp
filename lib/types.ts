@@ -58,4 +58,6 @@ export interface Expense {
   split_mode?: "igual" | "partes" | "montos";
   split_values?: number[] | null;
   category?: string | null;
+  // Foto opcional de la boleta: ruta en el bucket "boletas" (ver lib/receipts.ts)
+  receipt_path?: string | null;
 }

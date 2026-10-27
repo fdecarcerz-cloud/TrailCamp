@@ -5,8 +5,10 @@ import { supabase } from "@/lib/supabase";
 import AddFormToggle from "@/components/AddFormToggle";
 import ExpenseForm, { type ExpenseDraft } from "@/components/expenses/ExpenseForm";
 import { CategoryChart, PeopleChart } from "@/components/expenses/ExpenseCharts";
+import { ReceiptViewer } from "@/components/expenses/Receipt";
 import { Expense, Participant } from "@/lib/types";
 import { errorMessage } from "@/lib/errors";
+import { removeReceipts, uploadReceipt } from "@/lib/receipts";
 import {
   CATEGORY_INFO,
   type Transfer,
@@ -55,6 +57,7 @@ export default function ExpensesSection({
   const [showCharts, setShowCharts] = useState(false);
   const [sharing, setSharing] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [viewingReceipt, setViewingReceipt] = useState<Expense | null>(null);
 
   const safeExpenses = expenses.map((e) => ({
     ...e,
@@ -104,28 +107,43 @@ export default function ExpensesSection({
     category: d.category,
   });
 
+  // La foto se sube primero; si después falla el guardado, se borra para no dejarla suelta
   const handleAddExpense = async (d: ExpenseDraft) => {
     setSaving(true);
+    let uploaded: string | null = null;
     try {
-      const { error } = await supabase.from("expenses").insert([{ trip_id: tripId, ...draftToRow(d) }]);
+      if (d.photo) uploaded = await uploadReceipt(tripId, d.photo);
+      const { error } = await supabase
+        .from("expenses")
+        .insert([{ trip_id: tripId, ...draftToRow(d), receipt_path: uploaded }]);
       if (error) throw error;
       setFormKey((k) => k + 1);
       onRefresh();
     } catch (err) {
+      await removeReceipts([uploaded]);
       alert("Error guardando gasto: " + errorMessage(err));
     } finally {
       setSaving(false);
     }
   };
 
-  const handleUpdateExpense = async (id: string, d: ExpenseDraft) => {
+  const handleUpdateExpense = async (exp: Expense, d: ExpenseDraft) => {
     setSaving(true);
+    let uploaded: string | null = null;
     try {
-      const { error } = await supabase.from("expenses").update(draftToRow(d)).eq("id", id);
+      if (d.photo) uploaded = await uploadReceipt(tripId, d.photo);
+      const receipt_path = uploaded ?? (d.removePhoto ? null : (exp.receipt_path ?? null));
+      const { error } = await supabase
+        .from("expenses")
+        .update({ ...draftToRow(d), receipt_path })
+        .eq("id", exp.id);
       if (error) throw error;
+      // La foto anterior ya no se usa
+      if (exp.receipt_path && exp.receipt_path !== receipt_path) await removeReceipts([exp.receipt_path]);
       setEditingId(null);
       onRefresh();
     } catch (err) {
+      await removeReceipts([uploaded]);
       alert("Error actualizando gasto: " + errorMessage(err));
     } finally {
       setSaving(false);
@@ -135,8 +153,12 @@ export default function ExpensesSection({
   const handleDeleteExpense = async (exp: Expense) => {
     if (!confirm(`¿Eliminar "${exp.description}"?`)) return;
     const { error } = await supabase.from("expenses").delete().eq("id", exp.id);
-    if (error) alert("Error eliminando gasto: " + error.message);
-    else onRefresh();
+    if (error) {
+      alert("Error eliminando gasto: " + error.message);
+      return;
+    }
+    await removeReceipts([exp.receipt_path]);
+    onRefresh();
   };
 
   // ---------- Pagos ----------
@@ -449,7 +471,7 @@ export default function ExpensesSection({
                   initial={exp}
                   saving={saving}
                   submitLabel="Guardar cambios"
-                  onSubmit={(d) => handleUpdateExpense(exp.id, d)}
+                  onSubmit={(d) => handleUpdateExpense(exp, d)}
                   onCancel={() => setEditingId(null)}
                 />
               );
@@ -477,6 +499,16 @@ export default function ExpensesSection({
 
                 <div className="flex items-center gap-3 shrink-0">
                   <span className="font-mono text-sm font-bold text-emerald-400">{clp(exp.amount)}</span>
+                  {exp.receipt_path && (
+                    <button
+                      onClick={() => setViewingReceipt(exp)}
+                      className="text-sm leading-none px-0.5 opacity-80 hover:opacity-100"
+                      title="Ver la boleta"
+                      aria-label={`Ver la boleta de ${exp.description}`}
+                    >
+                      🧾
+                    </button>
+                  )}
                   <button
                     onClick={() => setEditingId(exp.id)}
                     className="text-slate-400 hover:text-slate-200 text-xs px-1"
@@ -541,6 +573,14 @@ export default function ExpensesSection({
             </div>
           )}
         </div>
+      )}
+
+      {viewingReceipt?.receipt_path && (
+        <ReceiptViewer
+          path={viewingReceipt.receipt_path}
+          title={viewingReceipt.description}
+          onClose={() => setViewingReceipt(null)}
+        />
       )}
     </div>
   );
