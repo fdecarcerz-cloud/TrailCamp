@@ -1,11 +1,18 @@
 // Tipos de las tablas de Supabase tal como los usa la app (ver supabase/estructura_actual.sql)
 
+export type TripKind = "viaje" | "gastos";
+
+export const isExpenseGroup = (trip: Pick<Trip, "kind">) => trip.kind === "gastos";
+
 export interface Trip {
   id: string;
   name: string;
-  destination: string;
-  start_date: string;
-  end_date: string;
+  // 'gastos' = solo equipo y gastos (sin material, autos ni clima)
+  kind?: TripKind;
+  // En un grupo de gastos pueden venir vacíos
+  destination: string | null;
+  start_date: string | null;
+  end_date: string | null;
   user_id?: string;
   description?: string;
   created_at?: string;

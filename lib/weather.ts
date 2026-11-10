@@ -37,12 +37,12 @@ export function weatherInfo(code: number): { emoji: string; label: string } {
 // ---------- Qué días mostrar ----------
 
 export type ForecastWindow =
-  | { kind: "pasado" }
+  | { kind: "pasado" } // también un viaje sin fechas: no se muestra el clima
   | { kind: "lejos"; availableFrom: string } // el viaje empieza después del último día del pronóstico
   | { kind: "dias"; dates: string[] }; // días del viaje desde hoy (los que no alcanzan, "pronto")
 
-export function forecastWindow(start: string, end: string, today = todayISO()): ForecastWindow {
-  if (tripStatus(start, end, today) === "pasado") return { kind: "pasado" };
+export function forecastWindow(start: string | null, end: string | null, today = todayISO()): ForecastWindow {
+  if (!start || tripStatus(start, end, today) === "pasado") return { kind: "pasado" };
   const lastForecastDay = addDays(today, FORECAST_DAYS - 1);
   if (start > lastForecastDay) return { kind: "lejos", availableFrom: addDays(start, -(FORECAST_DAYS - 1)) };
   const dates: string[] = [];

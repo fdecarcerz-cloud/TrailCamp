@@ -1,5 +1,5 @@
 -- Copia completa de la estructura de la base de datos de Supabase (schema public).
--- Foto tomada el 2026-11-10, después de aplicar migrations/20261110120000_ubicacion_para_clima.sql.
+-- Foto tomada el 2026-11-11, después de aplicar migrations/20261111120000_grupos_de_gastos.sql.
 -- Incluye al final el bucket de Storage "boletas" y sus políticas.
 -- Sirve para recrear la base de datos desde cero en un proyecto vacío (SQL Editor -> pegar -> Run).
 -- No contiene datos (viajes, gastos, etc.), solo la estructura.
@@ -74,7 +74,8 @@ create table if not exists public.trips (
   user_id uuid,
   latitude double precision,
   longitude double precision,
-  place_label text
+  place_label text,
+  kind text default 'viaje'::text not null
 );
 
 alter table carpools add constraint carpools_pkey PRIMARY KEY (id);
@@ -104,6 +105,8 @@ alter table participants add constraint participants_phone_largo CHECK (((phone 
 alter table participants add constraint participants_trip_id_fkey FOREIGN KEY (trip_id) REFERENCES trips(id) ON DELETE CASCADE;
 
 alter table participants add constraint participants_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE SET NULL;
+
+alter table trips add constraint trips_kind_valido CHECK ((kind = ANY (ARRAY['viaje'::text, 'gastos'::text])));
 
 alter table trips add constraint trips_ubicacion_valida CHECK ((((latitude IS NULL) = (longitude IS NULL)) AND ((latitude IS NULL) OR (((latitude >= ('-90'::integer)::double precision) AND (latitude <= (90)::double precision)) AND ((longitude >= ('-180'::integer)::double precision) AND (longitude <= (180)::double precision))))));
 

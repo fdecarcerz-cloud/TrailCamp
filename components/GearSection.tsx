@@ -27,8 +27,8 @@ interface GearSectionProps {
   // Nombre del participante cuyo email coincide con la sesión (null si no está en el equipo)
   myName: string | null;
   // Para la lista sugerida (época del año y noches)
-  tripStart?: string;
-  tripEnd?: string;
+  tripStart?: string | null;
+  tripEnd?: string | null;
   onRefresh: () => void;
 }
 

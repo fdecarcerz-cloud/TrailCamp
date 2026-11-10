@@ -18,8 +18,8 @@ import {
 interface SuggestGearModalProps {
   tripId: string;
   people: number;
-  startDate?: string;
-  endDate?: string;
+  startDate?: string | null;
+  endDate?: string | null;
   existing: GearItem[];
   onClose: () => void;
   onAdded: () => void;

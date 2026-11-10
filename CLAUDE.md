@@ -51,6 +51,11 @@ TrailCamp is a camping-trip coordinator. The UI text and code comments are in Sp
   - `/privacidad` is the privacy policy.
   - `/invitacion/[token]` is a personal invite link (`components/invite/InviteScreen.tsx`).
 - **Invitations:** people are added with a name and, optionally, a phone (normalized to `+56…` by `lib/phone.ts`) and/or email. Each participant row has a unique `invite_token`. The invite message is sent by WhatsApp straight to that phone. Opening the link calls `ver_invitacion` (also callable without a session) and then `aceptar_invitacion`, which sets `participants.user_id` to the session's account and its email. An insert trigger always generates a fresh token and only allows `user_id = auth.uid()`. If the user has to confirm their email first, `lib/invite.ts` keeps the token in localStorage and `AppProvider` brings them back to the link after login. There is no SMS login: people sign in with Google or email.
+- **Expense-only groups:** `trips.kind` is `viaje` (the default) or `gastos`. Check it with `isExpenseGroup(trip)` from `lib/types.ts`.
+  - **Form:** `TripFormModal` picks the kind. In a group, destination and dates are optional, and `destination`/`start_date`/`end_date` can be null.
+  - **Trip screen:** `TripScreen` shows only Equipo and Gastos, and opens on Gastos. It has no weather or countdown. The WhatsApp invite talks about expenses only.
+  - **Inicio:** groups appear in their own "Grupos de gastos" section (`summary.groups`). Their debts count in Tus pendientes. They are left out of the next trip, upcoming and past trips, and all stats.
+  - **Converting:** the creator can switch the kind when editing. Gear and carpools stay saved but hidden while it is a group.
 - **Weather and place:**
   - **Picking the place:** "Destino" is still free text, but `components/PlaceSearch.tsx` suggests places as you type: towns, but also campings, parks and hot springs. The search uses Photon (`lib/places.ts`), which is OpenStreetMap, free and needs no key. Streets and shops are excluded, and Chilean results rank first.
   - **Storage:** the picked place is saved in `trips.latitude`/`longitude`/`place_label`. Any participant can save it through the RPC `guardar_ubicacion_viaje`. If the destination changes without picking a new place, the trigger `limpiar_ubicacion_viaje` clears it.

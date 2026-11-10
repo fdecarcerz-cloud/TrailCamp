@@ -48,7 +48,7 @@ export interface SuggestedItem {
 type Season = "verano" | "otono" | "invierno" | "primavera";
 
 // Hemisferio sur: diciembre-febrero es verano
-export function seasonOf(startDate?: string): Season {
+export function seasonOf(startDate?: string | null): Season {
   const month = Number((startDate ?? "").slice(5, 7)) || new Date().getMonth() + 1;
   if (month === 12 || month <= 2) return "verano";
   if (month <= 5) return "otono";
@@ -71,7 +71,7 @@ export function suggestGear(opts: {
   answers: PackingAnswers;
   people: number;
   nights: number;
-  startDate?: string;
+  startDate?: string | null;
   existing: GearItem[]; // lo que ya está en Material no se vuelve a sugerir
 }): SuggestedItem[] {
   const { answers } = opts;

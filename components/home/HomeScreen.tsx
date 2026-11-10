@@ -41,7 +41,7 @@ export default function HomeScreen() {
   } else if (tripsLoading || !summary) {
     body = <p className="text-center text-xs text-slate-500 mt-16 animate-pulse">Cargando tus viajes...</p>;
   } else {
-    const { featured, upcoming, past, pending, recentTrip } = summary;
+    const { featured, upcoming, past, groups, pending, recentTrip } = summary;
     body = (
       <div className="max-w-3xl w-full mx-auto p-4 sm:p-6 space-y-6">
         <div className="flex items-end justify-between gap-3">
@@ -55,7 +55,7 @@ export default function HomeScreen() {
             onClick={openNewTrip}
             className="shrink-0 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs px-4 py-2.5 rounded-xl"
           >
-            + Nuevo viaje
+            + Nuevo
           </button>
         </div>
 
@@ -65,7 +65,7 @@ export default function HomeScreen() {
           <div className="border border-dashed border-slate-700 rounded-2xl p-8 flex flex-col items-center gap-3 text-center">
             <Logo className="w-16 h-16" />
             <p className="text-sm text-slate-400">
-              {past.length > 0
+              {past.length > 0 || groups.length > 0
                 ? "No tienes viajes próximos."
                 : "Todavía no tienes viajes. Crea uno, o pide que te inviten con tu correo."}
             </p>
@@ -102,6 +102,17 @@ export default function HomeScreen() {
             <div className="space-y-2">
               {upcoming.map((c) => (
                 <TripRow key={c.trip.id} card={c} />
+              ))}
+            </div>
+          </section>
+        )}
+
+        {groups.length > 0 && (
+          <section className="space-y-2">
+            <h2 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Grupos de gastos</h2>
+            <div className="space-y-2">
+              {groups.map((c) => (
+                <GroupRow key={c.trip.id} card={c} />
               ))}
             </div>
           </section>
@@ -185,6 +196,34 @@ function TripRow({ card, muted = false }: { card: TripCard; muted?: boolean }) {
       <span className={`shrink-0 text-[11px] font-semibold ${muted ? "text-slate-500" : "text-sky-300"}`}>
         {countdownLabel(trip.start_date, trip.end_date)}
       </span>
+    </Link>
+  );
+}
+
+// Grupo de solo gastos: cuánto se ha gastado y cómo quedas tú
+function GroupRow({ card }: { card: TripCard }) {
+  const { trip, mine } = card;
+  const bal = Math.round(mine?.balance ?? 0);
+  const even = Math.abs(bal) <= 1;
+  return (
+    <Link
+      href={`/viaje/${trip.id}`}
+      className="flex items-center gap-3 p-3.5 rounded-xl border bg-slate-900/60 border-slate-800 hover:border-slate-600 transition-colors"
+    >
+      <span className="text-lg leading-none">💸</span>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-semibold truncate text-white">{trip.name}</p>
+        <p className="text-[11px] text-slate-400 truncate">
+          👥 {card.people} {card.people === 1 ? "persona" : "personas"} · {clp(card.totalSpent)} en gastos
+        </p>
+      </div>
+      {mine && (
+        <span
+          className={`shrink-0 text-[11px] font-semibold ${even ? "text-slate-500" : bal > 0 ? "text-emerald-400" : "text-rose-400"}`}
+        >
+          {even ? "✓ A mano" : bal > 0 ? `Te deben ${clp(bal)}` : `Debes ${clp(-bal)}`}
+        </span>
+      )}
     </Link>
   );
 }

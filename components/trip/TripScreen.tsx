@@ -6,7 +6,7 @@ import { supabase } from "@/lib/supabase";
 import { formatDateRange, countdownLabel } from "@/lib/dates";
 import { isMe } from "@/lib/home";
 import { removeReceipts } from "@/lib/receipts";
-import type { Carpool, Expense, GearItem, Participant } from "@/lib/types";
+import { isExpenseGroup, type Carpool, type Expense, type GearItem, type Participant } from "@/lib/types";
 import { useApp } from "@/components/app/AppProvider";
 import AppHeader from "@/components/app/AppHeader";
 import Logo from "@/components/Logo";
@@ -25,7 +25,8 @@ export default function TripScreen({ tripId }: { tripId: string }) {
   const { authReady, userId, email, trips, tripsLoading, fetchTrips, openAuth, openEditTrip } = useApp();
   const trip = trips.find((t) => String(t.id) === String(tripId));
 
-  const [activeTab, setActiveTab] = useState<Tab>("participants");
+  // En un grupo de solo gastos se abre directo en Gastos
+  const [activeTab, setActiveTab] = useState<Tab>(() => (trip && isExpenseGroup(trip) ? "expenses" : "participants"));
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [gear, setGear] = useState<GearItem[]>([]);
   const [carpools, setCarpools] = useState<Carpool[]>([]);
@@ -104,7 +105,9 @@ export default function TripScreen({ tripId }: { tripId: string }) {
   const handleDeleteTrip = async () => {
     if (!trip) return;
     const ok = confirm(
-      `¿Borrar "${trip.name}"?\n\nSe borrarán también su equipo, material, autos y gastos. Esto no se puede deshacer.`
+      `¿Borrar "${trip.name}"?\n\nSe borrarán también ${
+        isExpenseGroup(trip) ? "su equipo y sus gastos" : "su equipo, material, autos y gastos"
+      }. Esto no se puede deshacer.`
     );
     if (!ok) return;
     // Las fotos de boletas van primero: sin el viaje ya no hay permiso sobre su carpeta
@@ -143,6 +146,17 @@ export default function TripScreen({ tripId }: { tripId: string }) {
     body = message("No encontramos este viaje, o no estás en su equipo.");
   } else {
     const isCreator = trip.user_id === userId;
+    const group = isExpenseGroup(trip);
+    const tabs = (
+      [
+        { id: "participants", label: "Equipo", short: "Equipo", count: participants.length },
+        { id: "gear", label: "Material", short: "Material", count: gear.length },
+        { id: "carpool", label: "Transporte", short: "Autos", count: carpools.length },
+        { id: "expenses", label: "Gastos", short: "Gastos", count: null },
+      ] as const
+    ).filter((t) => !group || t.id === "participants" || t.id === "expenses");
+    // Si se cambió a grupo de gastos estando en Material o Autos
+    const tab: Tab = tabs.some((t) => t.id === activeTab) ? activeTab : "expenses";
     body = (
       <div className="max-w-5xl w-full mx-auto p-4 sm:p-6 space-y-4 sm:space-y-6">
         <div className="bg-slate-900/60 border border-slate-800 p-4 sm:p-5 rounded-2xl">
@@ -168,33 +182,29 @@ export default function TripScreen({ tripId }: { tripId: string }) {
                 )}
               </div>
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-400">
-                <span className="text-emerald-400 font-medium">📍 {trip.destination}</span>
-                <span>📅 {formatDateRange(trip.start_date, trip.end_date)}</span>
-                <span className="text-sky-300">⏳ {countdownLabel(trip.start_date, trip.end_date)}</span>
+                {group && <span className="text-amber-300 font-medium">💸 Grupo de gastos</span>}
+                {trip.destination && <span className="text-emerald-400 font-medium">📍 {trip.destination}</span>}
+                {(trip.start_date || trip.end_date) && <span>📅 {formatDateRange(trip.start_date, trip.end_date)}</span>}
+                {!group && <span className="text-sky-300">⏳ {countdownLabel(trip.start_date, trip.end_date)}</span>}
               </div>
             </div>
 
-            <div className="grid grid-cols-4 md:flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs">
-              {(
-                [
-                  { id: "participants", label: "Equipo", short: "Equipo", count: participants.length },
-                  { id: "gear", label: "Material", short: "Material", count: gear.length },
-                  { id: "carpool", label: "Transporte", short: "Autos", count: carpools.length },
-                  { id: "expenses", label: "Gastos", short: "Gastos", count: null },
-                ] as const
-              ).map((tab) => (
+            <div
+              className={`grid ${group ? "grid-cols-2" : "grid-cols-4"} md:flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs`}
+            >
+              {tabs.map((t) => (
                 <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
+                  key={t.id}
+                  onClick={() => setActiveTab(t.id)}
                   className={`px-1 sm:px-3 py-1.5 rounded-lg font-medium transition-all whitespace-nowrap ${
-                    activeTab === tab.id ? "bg-emerald-600 text-white shadow-sm" : "text-slate-400 hover:text-white"
+                    tab === t.id ? "bg-emerald-600 text-white shadow-sm" : "text-slate-400 hover:text-white"
                   }`}
                 >
-                  <span className="sm:hidden">{tab.short}</span>
-                  <span className="hidden sm:inline">{tab.label}</span>
-                  {tab.count !== null && (
-                    <span className={`ml-1 text-[10px] ${activeTab === tab.id ? "text-emerald-100" : "text-slate-500"}`}>
-                      {tab.count}
+                  <span className="sm:hidden">{t.short}</span>
+                  <span className="hidden sm:inline">{t.label}</span>
+                  {t.count !== null && (
+                    <span className={`ml-1 text-[10px] ${tab === t.id ? "text-emerald-100" : "text-slate-500"}`}>
+                      {t.count}
                     </span>
                   )}
                 </button>
@@ -206,32 +216,35 @@ export default function TripScreen({ tripId }: { tripId: string }) {
             <TripNotes key={trip.id} tripId={trip.id} notes={trip.description} onSaved={fetchTrips} />
           </div>
 
-          <div className="mt-3">
-            <WeatherCard
-              key={`${trip.id}-${trip.destination}`}
-              trip={trip}
-              gear={gear}
-              people={participants.length}
-              onGearAdded={fetchDetails}
-              onPlaceSaved={fetchTrips}
-            />
-          </div>
+          {!group && (
+            <div className="mt-3">
+              <WeatherCard
+                key={`${trip.id}-${trip.destination}`}
+                trip={trip}
+                gear={gear}
+                people={participants.length}
+                onGearAdded={fetchDetails}
+                onPlaceSaved={fetchTrips}
+              />
+            </div>
+          )}
         </div>
 
         <div className="bg-slate-900/40 border border-slate-800/80 p-3 sm:p-5 rounded-2xl min-h-[400px]">
-          {activeTab === "participants" && (
+          {tab === "participants" && (
             <ParticipantsSection
               tripId={trip.id}
               participants={participants}
               isCreator={isCreator}
               tripName={trip.name}
               tripDetails={[formatDateRange(trip.start_date, trip.end_date), trip.destination].filter(Boolean).join(", ")}
+              expenseGroup={group}
               myName={myName}
               myEmail={email}
               onRefresh={fetchDetails}
             />
           )}
-          {activeTab === "gear" && (
+          {tab === "gear" && (
             <GearSection
               tripId={trip.id}
               gear={gear}
@@ -242,7 +255,7 @@ export default function TripScreen({ tripId }: { tripId: string }) {
               onRefresh={fetchDetails}
             />
           )}
-          {activeTab === "carpool" && (
+          {tab === "carpool" && (
             <CarpoolSection
               tripId={trip.id}
               carpools={carpools}
@@ -251,7 +264,7 @@ export default function TripScreen({ tripId }: { tripId: string }) {
               onRefresh={fetchDetails}
             />
           )}
-          {activeTab === "expenses" && (
+          {tab === "expenses" && (
             <ExpensesSection
               tripId={trip.id}
               expenses={expenses}

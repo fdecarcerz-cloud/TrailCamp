@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
-import type { Trip } from "@/lib/types";
+import type { Trip, TripKind } from "@/lib/types";
 import type { Contact } from "@/lib/contacts";
 import { useApp } from "@/components/app/AppProvider";
 import FrequentContacts from "@/components/FrequentContacts";
@@ -14,12 +14,19 @@ import type { Place } from "@/lib/places";
 const inputClass =
   "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-emerald-500";
 
-// Crear o editar un viaje. Crear guarda user_id, suma al creador como Organizador con su
-// nombre de "Mi cuenta" y a la gente marcada de otros viajes. Editar y borrar solo los
-// permite RLS al creador.
+const KINDS: { id: TripKind; label: string; hint: string }[] = [
+  { id: "viaje", label: "🏕️ Viaje", hint: "Equipo, material, autos, gastos y clima" },
+  { id: "gastos", label: "💸 Solo gastos", hint: "Para dividir cuentas: una cena, un depto, un regalo" },
+];
+
+// Crear o editar un viaje o un grupo de solo gastos. Crear guarda user_id, suma al creador
+// como Organizador con su nombre de "Mi cuenta" y a la gente marcada de otros viajes.
+// Editar y borrar solo los permite RLS al creador.
 export default function TripFormModal({ trip, onClose }: { trip: Trip | null; onClose: () => void }) {
   const router = useRouter();
   const { userId, email, displayName, fetchTrips } = useApp();
+  const [kind, setKind] = useState<TripKind>(trip?.kind ?? "viaje");
+  const group = kind === "gastos";
   const [name, setName] = useState(trip?.name ?? "");
   const [destination, setDestination] = useState(trip?.destination ?? "");
   const [start, setStart] = useState(trip?.start_date ?? "");
@@ -30,8 +37,8 @@ export default function TripFormModal({ trip, onClose }: { trip: Trip | null; on
   const [place, setPlace] = useState<Place | null>(
     trip?.latitude != null && trip.longitude != null
       ? {
-          name: trip.destination,
-          label: trip.place_label ?? trip.destination,
+          name: trip.destination ?? "",
+          label: trip.place_label ?? trip.destination ?? "",
           detail: "",
           lat: trip.latitude,
           lon: trip.longitude,
@@ -42,25 +49,32 @@ export default function TripFormModal({ trip, onClose }: { trip: Trip | null; on
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (end < start) {
+    // En un grupo de gastos las fechas son opcionales: con una sola, es un día
+    const from = start || end;
+    const to = end || start;
+    if (to < from) {
       alert("La fecha de término no puede ser antes de la fecha de inicio.");
       return;
     }
+    const fields = {
+      kind,
+      name: name.trim(),
+      destination: destination.trim() || null,
+      start_date: from || null,
+      end_date: to || null,
+      // Sin lugar elegido, si cambió el destino la base borra la ubicación vieja
+      ...placeFields,
+    };
     setSaving(true);
     try {
       if (trip) {
         const { error } = await supabase
           .from("trips")
           .update({
-            name: name.trim(),
+            ...fields,
             // title y date son columnas antiguas; se mantienen iguales a name y start_date
-            title: name.trim(),
-            destination: destination.trim(),
-            start_date: start,
-            date: start,
-            end_date: end,
-            // Sin lugar elegido, si cambió el destino la base borra la ubicación vieja
-            ...placeFields,
+            title: fields.name,
+            date: fields.start_date,
           })
           .eq("id", trip.id);
         if (error) throw error;
@@ -72,16 +86,7 @@ export default function TripFormModal({ trip, onClose }: { trip: Trip | null; on
       if (!userId) return;
       const { data, error } = await supabase
         .from("trips")
-        .insert([
-          {
-            name: name.trim(),
-            destination: destination.trim(),
-            start_date: start,
-            end_date: end,
-            user_id: userId,
-            ...placeFields,
-          },
-        ])
+        .insert([{ ...fields, user_id: userId }])
         .select()
         .single();
       if (error) throw error;
@@ -105,14 +110,14 @@ export default function TripFormModal({ trip, onClose }: { trip: Trip | null; on
             status: "Confirmado",
           }))
         );
-        if (crewError) alert("El viaje se creó, pero no se pudo sumar al equipo: " + crewError.message);
+        if (crewError) alert(`${group ? "El grupo" : "El viaje"} se creó, pero no se pudo sumar al equipo: ` + crewError.message);
       }
 
       await fetchTrips();
       onClose();
       if (data) router.push(`/viaje/${data.id}`);
     } catch (err) {
-      alert("No se pudo guardar el viaje: " + errorMessage(err));
+      alert(`No se pudo guardar ${group ? "el grupo" : "el viaje"}: ` + errorMessage(err));
     } finally {
       setSaving(false);
     }
@@ -121,24 +126,50 @@ export default function TripFormModal({ trip, onClose }: { trip: Trip | null; on
   return (
     <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
       <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md max-h-[90dvh] overflow-y-auto p-6 relative shadow-2xl">
-        <h3 className="text-base font-bold text-white mb-4">{trip ? "Editar viaje" : "Nuevo viaje"}</h3>
+        <h3 className="text-base font-bold text-white mb-4">
+          {trip ? (group ? "Editar grupo de gastos" : "Editar viaje") : group ? "Nuevo grupo de gastos" : "Nuevo viaje"}
+        </h3>
         <form onSubmit={handleSubmit} className="space-y-4 text-xs">
+          <div className="grid grid-cols-2 gap-2">
+            {KINDS.map((k) => (
+              <button
+                key={k.id}
+                type="button"
+                onClick={() => setKind(k.id)}
+                className={`text-left rounded-xl border px-3 py-2.5 transition-colors ${
+                  kind === k.id
+                    ? "border-emerald-500 bg-emerald-950/40 text-white"
+                    : "border-slate-800 bg-slate-950 text-slate-400 hover:border-slate-600"
+                }`}
+              >
+                <span className="block font-semibold">{k.label}</span>
+                <span className="block text-[11px] text-slate-500 mt-0.5">{k.hint}</span>
+              </button>
+            ))}
+          </div>
+          {trip && group && trip.kind !== "gastos" && (
+            <p className="text-[11px] text-amber-300">
+              El material y los autos quedan guardados (ocultos) por si vuelves a convertirlo en viaje.
+            </p>
+          )}
           <div>
-            <label className="block text-slate-400 mb-1 font-medium">Nombre del viaje</label>
+            <label className="block text-slate-400 mb-1 font-medium">{group ? "Nombre del grupo" : "Nombre del viaje"}</label>
             <input
               type="text"
               required
-              placeholder="Ej: Travesía Torres del Paine"
+              placeholder={group ? "Ej: Depto Ñuñoa, Cumpleaños Cata" : "Ej: Travesía Torres del Paine"}
               value={name}
               onChange={(e) => setName(e.target.value)}
               className={inputClass}
             />
           </div>
           <div>
-            <label className="block text-slate-400 mb-1 font-medium">Destino</label>
+            <label className="block text-slate-400 mb-1 font-medium">
+              {group ? "Lugar (opcional)" : "Destino"}
+            </label>
             <PlaceSearch
-              required
-              placeholder="Ej: Camping Pucón, Torres del Paine"
+              required={!group}
+              placeholder={group ? "Ej: Santiago" : "Ej: Camping Pucón, Torres del Paine"}
               value={destination}
               onChange={(text) => {
                 setDestination(text);
@@ -153,6 +184,7 @@ export default function TripFormModal({ trip, onClose }: { trip: Trip | null; on
             {place ? (
               <p className="mt-1 text-[11px] text-emerald-400">📍 {place.label}</p>
             ) : (
+              !group &&
               destination.trim() && (
                 <p className="mt-1 text-[11px] text-slate-500">
                   Elige una sugerencia para que el pronóstico del clima sea del lugar exacto (opcional).
@@ -162,10 +194,10 @@ export default function TripFormModal({ trip, onClose }: { trip: Trip | null; on
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-slate-400 mb-1 font-medium">Desde</label>
+              <label className="block text-slate-400 mb-1 font-medium">{group ? "Desde (opcional)" : "Desde"}</label>
               <input
                 type="date"
-                required
+                required={!group}
                 value={start}
                 onChange={(e) => setStart(e.target.value)}
                 onClick={(e) => e.currentTarget.showPicker?.()}
@@ -173,10 +205,10 @@ export default function TripFormModal({ trip, onClose }: { trip: Trip | null; on
               />
             </div>
             <div>
-              <label className="block text-slate-400 mb-1 font-medium">Hasta</label>
+              <label className="block text-slate-400 mb-1 font-medium">{group ? "Hasta (opcional)" : "Hasta"}</label>
               <input
                 type="date"
-                required
+                required={!group}
                 value={end}
                 onChange={(e) => setEnd(e.target.value)}
                 onClick={(e) => e.currentTarget.showPicker?.()}
@@ -202,9 +234,9 @@ export default function TripFormModal({ trip, onClose }: { trip: Trip | null; on
                 ? "Guardando..."
                 : trip
                   ? "Guardar cambios"
-                  : crew.length > 0
-                    ? `Crear viaje con ${crew.length} ${crew.length === 1 ? "persona" : "personas"}`
-                    : "Crear viaje"}
+                  : `${group ? "Crear grupo" : "Crear viaje"}${
+                      crew.length > 0 ? ` con ${crew.length} ${crew.length === 1 ? "persona" : "personas"}` : ""
+                    }`}
             </button>
           </div>
         </form>

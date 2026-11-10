@@ -1,4 +1,4 @@
-import type { Carpool, Expense, GearItem, Participant, Trip } from "@/lib/types";
+import { isExpenseGroup, type Carpool, type Expense, type GearItem, type Participant, type Trip } from "@/lib/types";
 import { nightsOf, todayISO, tripStatus, type TripStatus } from "@/lib/dates";
 import { categoryOf, computeTransfers, sharesOf, summarize, type Category } from "@/lib/expenses";
 
@@ -28,6 +28,7 @@ export interface HomeSummary {
   featured: TripCard | null; // el viaje en curso o el próximo
   upcoming: TripCard[]; // próximos, sin el destacado
   past: TripCard[];
+  groups: TripCard[]; // grupos de solo gastos, del más nuevo al más antiguo (no cuentan como viaje)
   pending: Pending[];
   recentTrip: TripCard | null; // el viaje en curso o, si no hay, el último realizado
   stats: {
@@ -62,6 +63,7 @@ export function buildHomeSummary(input: {
     rows.filter((r) => String(r.trip_id) === String(tripId));
 
   const cards: TripCard[] = [];
+  const groups: TripCard[] = [];
   const pending: Pending[] = [];
   let mySpent = 0;
   const myByCategory: Partial<Record<Category, number>> = {};
@@ -76,8 +78,10 @@ export function buildHomeSummary(input: {
     const status = tripStatus(trip.start_date, trip.end_date, today);
     const people = summarize(tParts, tExp);
     const me = myName ? people.find((p) => p.name === myName) : undefined;
+    // Los grupos de solo gastos tienen sus deudas en pendientes, pero no cuentan en las estadísticas
+    const group = isExpenseGroup(trip);
 
-    if (myName) {
+    if (myName && !group) {
       for (const e of tExp) {
         if (e.is_settlement) continue;
         const share = sharesOf(e)[myName] ?? 0;
@@ -85,7 +89,7 @@ export function buildHomeSummary(input: {
       }
     }
 
-    cards.push({
+    (group ? groups : cards).push({
       trip,
       status,
       myName,
@@ -101,27 +105,29 @@ export function buildHomeSummary(input: {
 
     // Deudas: también en viajes pasados, hasta que se paguen
     if (myName) {
-      if (me) mySpent += me.consumed;
+      if (me && !group) mySpent += me.consumed;
       for (const t of computeTransfers(people)) {
         if (t.from === myName) add("💸", `Le debes $${t.amount.toLocaleString("es-CL")} a ${t.to}`, true);
         if (t.to === myName) add("💰", `${t.from} te debe $${t.amount.toLocaleString("es-CL")}`);
       }
     }
 
-    if (status !== "pasado") {
-      // Sin su correo en el equipo, la app no sabe cuál es: no funcionan "Yo lo llevo", "Me subo" ni su balance
-      if (!myName) {
-        // Solo el creador ve el botón "Soy yo" (editar el equipo es solo suyo)
-        const isCreator = !!input.userId && String(trip.user_id) === String(input.userId);
-        add(
-          "🙋",
-          isCreator
-            ? "No te encontramos en el equipo: toca \"Soy yo\" junto a tu nombre"
-            : "No apareces con tu correo en el equipo: pídele al organizador que lo agregue",
-          true
-        );
-      }
+    // Sin su correo en el equipo, la app no sabe cuál es: no funcionan "Yo lo llevo", "Me subo" ni su balance.
+    // Un grupo de gastos no tiene fechas: sigue "abierto" mientras exista.
+    if (!myName && (group || status !== "pasado")) {
+      // Solo el creador ve el botón "Soy yo" (editar el equipo es solo suyo)
+      const isCreator = !!input.userId && String(trip.user_id) === String(input.userId);
+      add(
+        "🙋",
+        isCreator
+          ? "No te encontramos en el equipo: toca \"Soy yo\" junto a tu nombre"
+          : "No apareces con tu correo en el equipo: pídele al organizador que lo agregue",
+        true
+      );
+    }
 
+    // Material y autos: solo en viajes (un grupo que antes fue viaje los tiene guardados, pero ocultos)
+    if (!group && status !== "pasado") {
       const critical = tGear.filter(
         (g) => g.priority === "Imprescindible" && g.status !== "Empacado" && !g.assigned_to
       ).length;
@@ -140,7 +146,7 @@ export function buildHomeSummary(input: {
 
     // Compañeros de viaje: misma persona en varios viajes (por correo, o por nombre si no tiene).
     // Solo en viajes donde se sabe cuál es el usuario; si no, podría contarse a sí mismo.
-    if (status !== "proximo" && myName) {
+    if (status !== "proximo" && myName && !group) {
       for (const p of tParts) {
         if (isMe(p, userId, email) || p.name === myName) continue;
         const key = p.user_id || p.email?.toLowerCase() || p.name.toLowerCase();
@@ -164,6 +170,7 @@ export function buildHomeSummary(input: {
     featured,
     upcoming: [...ongoing, ...upcoming].filter((c) => c !== featured),
     past,
+    groups: groups.sort((a, b) => (b.trip.created_at ?? "").localeCompare(a.trip.created_at ?? "")),
     pending: pending.sort((a, b) => Number(b.urgent) - Number(a.urgent)),
     recentTrip,
     stats: {

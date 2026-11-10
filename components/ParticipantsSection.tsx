@@ -18,6 +18,8 @@ interface ParticipantsSectionProps {
   // Para armar el mensaje de invitación
   tripName: string;
   tripDetails: string;
+  // Grupo de solo gastos: la invitación habla de gastos, no de material y autos
+  expenseGroup?: boolean;
   myName: string | null;
   // Correo de la sesión, para "Soy yo" cuando la app no reconoce al usuario en el equipo
   myEmail: string | null;
@@ -38,6 +40,7 @@ export default function ParticipantsSection({
   isCreator,
   tripName,
   tripDetails,
+  expenseGroup = false,
   myName,
   myEmail,
   onRefresh,
@@ -50,7 +53,9 @@ export default function ParticipantsSection({
     const origin = typeof window !== "undefined" ? window.location.origin : "https://trail-camp.vercel.app";
     const url = `${origin}/invitacion/${p.invite_token}`;
     return [
-      `¡Hola ${p.name}! Te sumé al viaje "${tripName}"${tripDetails ? ` (${tripDetails})` : ""} en TrailCamp, donde organizamos el material, los autos y los gastos.`,
+      expenseGroup
+        ? `¡Hola ${p.name}! Te sumé al grupo "${tripName}" en TrailCamp, donde llevamos las cuentas de los gastos compartidos.`
+        : `¡Hola ${p.name}! Te sumé al viaje "${tripName}"${tripDetails ? ` (${tripDetails})` : ""} en TrailCamp, donde organizamos el material, los autos y los gastos.`,
       "",
       `Entra con este link para unirte: ${url}`,
       "",

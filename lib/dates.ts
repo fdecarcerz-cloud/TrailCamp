@@ -2,14 +2,14 @@ const MESES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "o
 
 // Las fechas se guardan como texto "AAAA-MM-DD". Se leen a mano (sin new Date) para que
 // la zona horaria no las corra un día.
-function parse(value?: string) {
+function parse(value?: string | null) {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(value ?? "");
   if (!m) return null;
   return { year: Number(m[1]), month: Number(m[2]) - 1, day: Number(m[3]) };
 }
 
 // "14 – 17 oct 2026", "28 sep – 2 oct 2026" o "30 dic 2026 – 2 ene 2027"
-export function formatDateRange(start?: string, end?: string): string {
+export function formatDateRange(start?: string | null, end?: string | null): string {
   const a = parse(start);
   const b = parse(end);
   if (!a && !b) return "";
@@ -37,7 +37,7 @@ export function todayISO(now = new Date()): string {
 }
 
 // Días de a hasta b (ambas "AAAA-MM-DD"); null si alguna fecha no se entiende
-export function daysBetween(a?: string, b?: string): number | null {
+export function daysBetween(a?: string | null, b?: string | null): number | null {
   const pa = parse(a);
   const pb = parse(b);
   if (!pa || !pb) return null;
@@ -47,14 +47,14 @@ export function daysBetween(a?: string, b?: string): number | null {
 
 export type TripStatus = "proximo" | "en-curso" | "pasado";
 
-export function tripStatus(start?: string, end?: string, today = todayISO()): TripStatus {
+export function tripStatus(start?: string | null, end?: string | null, today = todayISO()): TripStatus {
   if (end && parse(end) && end < today) return "pasado";
   if (start && parse(start) && start <= today) return "en-curso";
   return "proximo";
 }
 
 // "Faltan 35 días", "¡Es mañana!", "En curso · día 2 de 5", "Terminó hace 3 días"
-export function countdownLabel(start?: string, end?: string, today = todayISO()): string {
+export function countdownLabel(start?: string | null, end?: string | null, today = todayISO()): string {
   const status = tripStatus(start, end, today);
   if (status === "en-curso") {
     const day = (daysBetween(start, today) ?? 0) + 1;
@@ -95,6 +95,6 @@ export function shortDate(value: string): string {
 }
 
 // Noches del viaje (un viaje de un solo día tiene 0)
-export function nightsOf(start?: string, end?: string): number {
+export function nightsOf(start?: string | null, end?: string | null): number {
   return Math.max(0, daysBetween(start, end) ?? 0);
 }
