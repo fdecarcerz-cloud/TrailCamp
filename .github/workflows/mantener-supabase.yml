@@ -1,0 +1,20 @@
+# El plan gratis de Supabase pausa el proyecto tras ~1 semana sin uso.
+# Una consulta chica cada 3 días lo mantiene activo. La clave es la publicable
+# (la misma que va en la app), así que no es un secreto: los datos los protege RLS.
+name: Mantener Supabase activo
+
+on:
+  schedule:
+    - cron: "0 12 */3 * *"
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Consultar la base
+        env:
+          SUPABASE_URL: https://eysvljnbutnehnknczzq.supabase.co
+          SUPABASE_KEY: sb_publishable_sGKIgAnXYY7KNaSdR7Bd4A_Me-aBcfN
+        run: |
+          curl --fail --silent --show-error "$SUPABASE_URL/rest/v1/trips?select=id&limit=1" -H "apikey: $SUPABASE_KEY"
