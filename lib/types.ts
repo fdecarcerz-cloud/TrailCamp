@@ -9,6 +9,10 @@ export interface Trip {
   user_id?: string;
   description?: string;
   created_at?: string;
+  // Lugar elegido en el buscador, para el clima (null si todavía no se busca)
+  latitude?: number | null;
+  longitude?: number | null;
+  place_label?: string | null;
 }
 
 export interface Participant {

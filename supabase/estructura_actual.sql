@@ -1,5 +1,5 @@
 -- Copia completa de la estructura de la base de datos de Supabase (schema public).
--- Foto tomada el 2026-10-27, después de aplicar migrations/20261027120000_fotos_de_boletas.sql.
+-- Foto tomada el 2026-11-10, después de aplicar migrations/20261110120000_ubicacion_para_clima.sql.
 -- Incluye al final el bucket de Storage "boletas" y sus políticas.
 -- Sirve para recrear la base de datos desde cero en un proyecto vacío (SQL Editor -> pegar -> Run).
 -- No contiene datos (viajes, gastos, etc.), solo la estructura.
@@ -71,7 +71,10 @@ create table if not exists public.trips (
   start_date text,
   name text,
   description text,
-  user_id uuid
+  user_id uuid,
+  latitude double precision,
+  longitude double precision,
+  place_label text
 );
 
 alter table carpools add constraint carpools_pkey PRIMARY KEY (id);
@@ -101,6 +104,8 @@ alter table participants add constraint participants_phone_largo CHECK (((phone 
 alter table participants add constraint participants_trip_id_fkey FOREIGN KEY (trip_id) REFERENCES trips(id) ON DELETE CASCADE;
 
 alter table participants add constraint participants_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE SET NULL;
+
+alter table trips add constraint trips_ubicacion_valida CHECK ((((latitude IS NULL) = (longitude IS NULL)) AND ((latitude IS NULL) OR (((latitude >= ('-90'::integer)::double precision) AND (latitude <= (90)::double precision)) AND ((longitude >= ('-180'::integer)::double precision) AND (longitude <= (180)::double precision))))));
 
 alter table trips add constraint trips_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE;
 
@@ -231,6 +236,47 @@ begin
   update public.trips
   set description = nullif(btrim(coalesce(p_notas, '')), '')
   where id = p_viaje;
+end;
+$function$
+;
+
+CREATE OR REPLACE FUNCTION public.guardar_ubicacion_viaje(p_viaje bigint, p_lat double precision, p_lon double precision, p_lugar text)
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+begin
+  if not public.puede_ver_viaje(p_viaje) then
+    raise exception 'No tienes acceso a este viaje.';
+  end if;
+  if p_lat is null or p_lon is null or p_lat not between -90 and 90 or p_lon not between -180 and 180 then
+    raise exception 'La ubicación no es válida.';
+  end if;
+
+  update public.trips
+  set latitude = p_lat,
+      longitude = p_lon,
+      place_label = left(nullif(btrim(coalesce(p_lugar, '')), ''), 200)
+  where id = p_viaje;
+end;
+$function$
+;
+
+CREATE OR REPLACE FUNCTION public.limpiar_ubicacion_viaje()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SET search_path TO ''
+AS $function$
+begin
+  if new.destination is distinct from old.destination
+     and new.latitude is not distinct from old.latitude
+     and new.longitude is not distinct from old.longitude then
+    new.latitude := null;
+    new.longitude := null;
+    new.place_label := null;
+  end if;
+  return new;
 end;
 $function$
 ;
@@ -381,6 +427,8 @@ $function$
 
 CREATE TRIGGER participante_nuevo_seguro BEFORE INSERT ON public.participants FOR EACH ROW EXECUTE FUNCTION participante_nuevo_seguro();
 
+CREATE TRIGGER trg_limpiar_ubicacion_viaje BEFORE UPDATE ON public.trips FOR EACH ROW EXECUTE FUNCTION limpiar_ubicacion_viaje();
+
 CREATE TRIGGER trg_sync_trip_legacy_dates BEFORE INSERT OR UPDATE ON public.trips FOR EACH ROW EXECUTE FUNCTION sync_trip_legacy_dates();
 
 CREATE TRIGGER trg_sync_trip_title_name BEFORE INSERT OR UPDATE ON public.trips FOR EACH ROW EXECUTE FUNCTION sync_trip_title_name();
@@ -450,6 +498,8 @@ revoke execute on function public.borrar_participante(bigint) from public, anon;
 grant execute on function public.borrar_participante(bigint) to authenticated;
 revoke execute on function public.guardar_notas_viaje(bigint, text) from public, anon;
 grant execute on function public.guardar_notas_viaje(bigint, text) to authenticated;
+revoke execute on function public.guardar_ubicacion_viaje(bigint, double precision, double precision, text) from public, anon;
+grant execute on function public.guardar_ubicacion_viaje(bigint, double precision, double precision, text) to authenticated;
 
 -- Realtime (migración 20261016150000)
 alter publication supabase_realtime

@@ -72,6 +72,28 @@ export function countdownLabel(start?: string, end?: string, today = todayISO())
   return `Faltan ${left} días`;
 }
 
+// "AAAA-MM-DD" más n días (en UTC para que la zona horaria no corra la fecha)
+export function addDays(value: string, n: number): string {
+  const p = parse(value);
+  if (!p) return value;
+  return new Date(Date.UTC(p.year, p.month, p.day + n)).toISOString().slice(0, 10);
+}
+
+const DIAS = ["dom", "lun", "mar", "mié", "jue", "vie", "sáb"];
+
+// "sáb 14"
+export function shortDayLabel(value: string): string {
+  const p = parse(value);
+  if (!p) return value;
+  return `${DIAS[new Date(Date.UTC(p.year, p.month, p.day)).getUTCDay()]} ${p.day}`;
+}
+
+// "14 oct"
+export function shortDate(value: string): string {
+  const p = parse(value);
+  return p ? `${p.day} ${MESES[p.month]}` : value;
+}
+
 // Noches del viaje (un viaje de un solo día tiene 0)
 export function nightsOf(start?: string, end?: string): number {
   return Math.max(0, daysBetween(start, end) ?? 0);

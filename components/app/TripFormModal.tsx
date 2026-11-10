@@ -7,7 +7,9 @@ import type { Trip } from "@/lib/types";
 import type { Contact } from "@/lib/contacts";
 import { useApp } from "@/components/app/AppProvider";
 import FrequentContacts from "@/components/FrequentContacts";
+import PlaceSearch from "@/components/PlaceSearch";
 import { errorMessage } from "@/lib/errors";
+import type { Place } from "@/lib/places";
 
 const inputClass =
   "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-emerald-500";
@@ -24,6 +26,19 @@ export default function TripFormModal({ trip, onClose }: { trip: Trip | null; on
   const [end, setEnd] = useState(trip?.end_date ?? "");
   const [saving, setSaving] = useState(false);
   const [crew, setCrew] = useState<Contact[]>([]);
+  // Lugar elegido en el buscador (para el clima). Si se escribe otra cosa, se olvida.
+  const [place, setPlace] = useState<Place | null>(
+    trip?.latitude != null && trip.longitude != null
+      ? {
+          name: trip.destination,
+          label: trip.place_label ?? trip.destination,
+          detail: "",
+          lat: trip.latitude,
+          lon: trip.longitude,
+        }
+      : null
+  );
+  const placeFields = place ? { latitude: place.lat, longitude: place.lon, place_label: place.label } : {};
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -44,6 +59,8 @@ export default function TripFormModal({ trip, onClose }: { trip: Trip | null; on
             start_date: start,
             date: start,
             end_date: end,
+            // Sin lugar elegido, si cambió el destino la base borra la ubicación vieja
+            ...placeFields,
           })
           .eq("id", trip.id);
         if (error) throw error;
@@ -55,7 +72,16 @@ export default function TripFormModal({ trip, onClose }: { trip: Trip | null; on
       if (!userId) return;
       const { data, error } = await supabase
         .from("trips")
-        .insert([{ name: name.trim(), destination: destination.trim(), start_date: start, end_date: end, user_id: userId }])
+        .insert([
+          {
+            name: name.trim(),
+            destination: destination.trim(),
+            start_date: start,
+            end_date: end,
+            user_id: userId,
+            ...placeFields,
+          },
+        ])
         .select()
         .single();
       if (error) throw error;
@@ -110,14 +136,29 @@ export default function TripFormModal({ trip, onClose }: { trip: Trip | null; on
           </div>
           <div>
             <label className="block text-slate-400 mb-1 font-medium">Destino</label>
-            <input
-              type="text"
+            <PlaceSearch
               required
-              placeholder="Ej: Torres del Paine"
+              placeholder="Ej: Camping Pucón, Torres del Paine"
               value={destination}
-              onChange={(e) => setDestination(e.target.value)}
+              onChange={(text) => {
+                setDestination(text);
+                setPlace(null);
+              }}
+              onPick={(p) => {
+                setDestination(p.name);
+                setPlace(p);
+              }}
               className={inputClass}
             />
+            {place ? (
+              <p className="mt-1 text-[11px] text-emerald-400">📍 {place.label}</p>
+            ) : (
+              destination.trim() && (
+                <p className="mt-1 text-[11px] text-slate-500">
+                  Elige una sugerencia para que el pronóstico del clima sea del lugar exacto (opcional).
+                </p>
+              )
+            )}
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>

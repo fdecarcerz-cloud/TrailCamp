@@ -195,10 +195,16 @@ export function suggestGear(opts: {
     .filter(Boolean)
     .forEach((s) => add(s.charAt(0).toUpperCase() + s.slice(1), "Importante"));
 
-  // Sin repetidos, y sin lo que ya está en Material
+  return withoutExisting(items, opts.existing);
+}
+
+// Sin repetidos, y sin lo que ya está en Material. Con exact, solo cuenta el mismo nombre:
+// "Saco de dormir para bajo 0 °C" se sugiere aunque ya esté "Saco de dormir".
+export function withoutExisting(items: SuggestedItem[], gear: GearItem[], exact = false): SuggestedItem[] {
   // "Carpa para 4 personas" ya cubre "Carpa": se compara si un nombre contiene al otro
-  const existing = opts.existing.map((g) => normalize(g.name ?? "")).filter((x) => x.length >= 3);
-  const alreadyHave = (key: string) => existing.some((e) => e === key || e.includes(key) || key.includes(e));
+  const existing = gear.map((g) => normalize(g.name ?? "")).filter((x) => x.length >= 3);
+  const alreadyHave = (key: string) =>
+    existing.some((e) => e === key || (!exact && (e.includes(key) || key.includes(e))));
   const seen = new Set<string>();
   return items.filter((it) => {
     const key = normalize(it.name);

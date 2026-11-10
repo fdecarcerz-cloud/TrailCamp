@@ -11,6 +11,7 @@ import { useApp } from "@/components/app/AppProvider";
 import AppHeader from "@/components/app/AppHeader";
 import Logo from "@/components/Logo";
 import TripNotes from "@/components/TripNotes";
+import WeatherCard from "@/components/trip/WeatherCard";
 import ParticipantsSection from "@/components/ParticipantsSection";
 import GearSection from "@/components/GearSection";
 import CarpoolSection from "@/components/CarpoolSection";
@@ -203,6 +204,17 @@ export default function TripScreen({ tripId }: { tripId: string }) {
 
           <div className="mt-3">
             <TripNotes key={trip.id} tripId={trip.id} notes={trip.description} onSaved={fetchTrips} />
+          </div>
+
+          <div className="mt-3">
+            <WeatherCard
+              key={`${trip.id}-${trip.destination}`}
+              trip={trip}
+              gear={gear}
+              people={participants.length}
+              onGearAdded={fetchDetails}
+              onPlaceSaved={fetchTrips}
+            />
           </div>
         </div>
 
