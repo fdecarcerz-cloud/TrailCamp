@@ -33,7 +33,7 @@ Env vars (in `.env.local`): `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_AN
 
 Project ref: `eysvljnbutnehnknczzq`. The CLI is used through `npx` and is already logged in. It is not linked, so pass `--linked --project-ref eysvljnbutnehnknczzq`. The sandbox blocks network, so these commands need the sandbox disabled.
 
-- Query or apply SQL: `npx supabase db query --linked --project-ref eysvljnbutnehnknczzq "<sql>"` (or `-f file.sql`)
+- Query or apply SQL: `npx supabase db query --remote=eysvljnbutnehnknczzq --read-only "<sql>"` for reads. For writes, use `--yes` instead of `--read-only`, plus `-f file.sql`; since CLI v3 a write in agent mode fails without it, and only with the user's OK. `--linked --project-ref` still works but is deprecated.
 - Security lint: `npx supabase db advisors --linked --project-ref eysvljnbutnehnknczzq --type security`
 - `supabase/estructura_actual.sql`: full snapshot of the public schema. Regenerate it after every DB change.
 - Auth emails go out through custom SMTP: a dedicated Gmail account with an app password, set in the dashboard. The Spanish templates are in `supabase/plantillas-correo/` and are pasted into the dashboard by hand. Auth error messages are translated in `lib/authErrors.ts`. Google sign-in is also enabled: the OAuth client lives in the user's Google Cloud project, and `/privacidad` is the privacy policy Google requires. The button is Google Identity Services (`components/GoogleSignInButton.tsx`) and calls `signInWithIdToken` with a nonce, so the consent screen says "Trailcamp" instead of the Supabase domain. It needs `NEXT_PUBLIC_GOOGLE_CLIENT_ID`, and local tests must run on port 3000, which is an authorized JS origin.
