@@ -6,6 +6,7 @@ import { clp } from "@/lib/expenses";
 import { useApp } from "@/components/app/AppProvider";
 import AppHeader from "@/components/app/AppHeader";
 import Logo from "@/components/Logo";
+import LoadErrorBanner from "@/components/LoadErrorBanner";
 import Stat from "@/components/home/Stat";
 import { CategoryBreakdown } from "@/components/expenses/ExpenseCharts";
 import { useHomeSummary } from "@/components/home/useHomeSummary";
@@ -16,7 +17,7 @@ const BAR_COLOR = "#3987e5";
 // Estadísticas de todos los viajes (/estadisticas, desde el menú ⋯)
 export default function StatsScreen() {
   const { authReady, userId, tripsLoading, openAuth } = useApp();
-  const summary = useHomeSummary();
+  const { summary, failed, reload } = useHomeSummary();
 
   let body: React.ReactNode;
   if (!authReady) {
@@ -31,6 +32,12 @@ export default function StatsScreen() {
         </button>
       </div>
     );
+  } else if (!summary && failed) {
+    body = (
+      <div className="max-w-3xl w-full mx-auto p-4 sm:p-6">
+        <LoadErrorBanner onRetry={reload} text="No se pudieron cargar tus estadísticas. Revisa tu conexión a internet." />
+      </div>
+    );
   } else if (tripsLoading || !summary) {
     body = <p className="text-center text-xs text-slate-500 mt-16 animate-pulse">Cargando estadísticas...</p>;
   } else {
@@ -41,6 +48,12 @@ export default function StatsScreen() {
 
     body = (
       <div className="max-w-3xl w-full mx-auto p-4 sm:p-6 space-y-6">
+        {failed && (
+          <LoadErrorBanner
+            onRetry={reload}
+            text="No se pudo actualizar. Lo que ves puede estar desactualizado. Revisa tu conexión."
+          />
+        )}
         <div>
           <h1 className="text-2xl font-bold text-white">Tus estadísticas</h1>
           <p className="text-xs text-slate-400 mt-0.5">De todos tus viajes en TrailCamp</p>

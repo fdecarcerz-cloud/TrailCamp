@@ -8,6 +8,7 @@ import { clp } from "@/lib/expenses";
 import { useApp } from "@/components/app/AppProvider";
 import AppHeader from "@/components/app/AppHeader";
 import Logo from "@/components/Logo";
+import LoadErrorBanner from "@/components/LoadErrorBanner";
 import Stat from "@/components/home/Stat";
 import { useHomeSummary } from "@/components/home/useHomeSummary";
 
@@ -15,7 +16,7 @@ import { useHomeSummary } from "@/components/home/useHomeSummary";
 // Las estadísticas de todos los viajes están en /estadisticas (menú ⋯).
 export default function HomeScreen() {
   const { authReady, userId, displayName, tripsLoading, openAuth, openNewTrip } = useApp();
-  const summary = useHomeSummary();
+  const { summary, failed, reload } = useHomeSummary();
   const [showPast, setShowPast] = useState(false);
 
   const firstName = displayName.split(" ")[0];
@@ -38,12 +39,24 @@ export default function HomeScreen() {
         </button>
       </div>
     );
+  } else if (!summary && failed) {
+    body = (
+      <div className="max-w-3xl w-full mx-auto p-4 sm:p-6">
+        <LoadErrorBanner onRetry={reload} text="No se pudieron cargar tus viajes. Revisa tu conexión a internet." />
+      </div>
+    );
   } else if (tripsLoading || !summary) {
     body = <p className="text-center text-xs text-slate-500 mt-16 animate-pulse">Cargando tus viajes...</p>;
   } else {
     const { featured, upcoming, past, groups, pending, recentTrip } = summary;
     body = (
       <div className="max-w-3xl w-full mx-auto p-4 sm:p-6 space-y-6">
+        {failed && (
+          <LoadErrorBanner
+            onRetry={reload}
+            text="No se pudo actualizar. Lo que ves puede estar desactualizado. Revisa tu conexión."
+          />
+        )}
         <div className="flex items-end justify-between gap-3">
           <div>
             <h1 className="text-2xl font-bold text-white">Hola, {firstName} 👋</h1>

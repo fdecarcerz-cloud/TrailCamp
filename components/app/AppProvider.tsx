@@ -22,6 +22,7 @@ interface AppContextValue {
   displayName: string; // nombre para el saludo y para sumarse como organizador
   trips: Trip[];
   tripsLoading: boolean;
+  tripsFailed: boolean; // la última carga de viajes falló (sin conexión, Supabase caído...)
   fetchTrips: () => Promise<void>;
   openAuth: () => void;
   openNewTrip: () => void;
@@ -57,6 +58,7 @@ export default function AppProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [trips, setTrips] = useState<Trip[]>([]);
   const [tripsLoading, setTripsLoading] = useState(true);
+  const [tripsFailed, setTripsFailed] = useState(false);
 
   const [authOpen, setAuthOpen] = useState(false);
   const [recovering, setRecovering] = useState(false); // llegó desde "Recuperar contraseña"
@@ -79,10 +81,15 @@ export default function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // Los viajes que ve cada usuario los filtran las políticas RLS de Supabase
+  // Si falla, se conservan los viajes que ya estaban (no se muestra una lista vacía engañosa)
   const fetchTrips = useCallback(async () => {
     const { data, error } = await supabase.from("trips").select("*").order("start_date", { ascending: true });
-    if (error) console.error("Error cargando viajes:", error.message);
-    setTrips(data ?? []);
+    if (error || !data) {
+      setTripsFailed(true);
+    } else {
+      setTrips(data);
+      setTripsFailed(false);
+    }
     setTripsLoading(false);
   }, []);
 
@@ -140,6 +147,7 @@ export default function AppProvider({ children }: { children: ReactNode }) {
     displayName: nameFromUser(user),
     trips,
     tripsLoading,
+    tripsFailed,
     fetchTrips,
     openAuth: () => setAuthOpen(true),
     openNewTrip: () => (userId ? setTripModal({ open: true, trip: null }) : setAuthOpen(true)),

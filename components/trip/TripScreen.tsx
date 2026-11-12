@@ -10,6 +10,7 @@ import { isExpenseGroup, type Carpool, type Expense, type GearItem, type Partici
 import { useApp } from "@/components/app/AppProvider";
 import AppHeader from "@/components/app/AppHeader";
 import Logo from "@/components/Logo";
+import LoadErrorBanner from "@/components/LoadErrorBanner";
 import TripNotes from "@/components/TripNotes";
 import WeatherCard from "@/components/trip/WeatherCard";
 import ParticipantsSection from "@/components/ParticipantsSection";
@@ -22,7 +23,7 @@ type Tab = "participants" | "gear" | "carpool" | "expenses";
 // Pantalla de un viaje (/viaje/[id]): pestañas, notas y cambios en tiempo real.
 export default function TripScreen({ tripId }: { tripId: string }) {
   const router = useRouter();
-  const { authReady, userId, email, trips, tripsLoading, fetchTrips, openAuth, openEditTrip } = useApp();
+  const { authReady, userId, email, trips, tripsLoading, tripsFailed, fetchTrips, openAuth, openEditTrip } = useApp();
   const trip = trips.find((t) => String(t.id) === String(tripId));
 
   // En un grupo de solo gastos se abre directo en Gastos
@@ -31,6 +32,8 @@ export default function TripScreen({ tripId }: { tripId: string }) {
   const [gear, setGear] = useState<GearItem[]>([]);
   const [carpools, setCarpools] = useState<Carpool[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
+  // Falló la última carga: lo que se ve puede estar incompleto o desactualizado
+  const [loadFailed, setLoadFailed] = useState(false);
 
   const fetchDetails = useCallback(async () => {
     const [p, g, c, e] = await Promise.all([
@@ -39,10 +42,16 @@ export default function TripScreen({ tripId }: { tripId: string }) {
       supabase.from("carpools").select("*").eq("trip_id", tripId),
       supabase.from("expenses").select("*").eq("trip_id", tripId),
     ]);
-    if (p.data) setParticipants(p.data);
-    if (g.data) setGear(g.data);
-    if (c.data) setCarpools(c.data);
-    if (e.data) setExpenses(e.data);
+    // Solo se reemplaza si cargaron las cuatro, para no mezclar datos nuevos con viejos
+    if (p.error || g.error || c.error || e.error || !p.data || !g.data || !c.data || !e.data) {
+      setLoadFailed(true);
+      return;
+    }
+    setParticipants(p.data);
+    setGear(g.data);
+    setCarpools(c.data);
+    setExpenses(e.data);
+    setLoadFailed(false);
   }, [tripId]);
 
   useEffect(() => {
@@ -111,7 +120,15 @@ export default function TripScreen({ tripId }: { tripId: string }) {
     );
     if (!ok) return;
     // Las fotos de boletas van primero: sin el viaje ya no hay permiso sobre su carpeta
-    await removeReceipts(expenses.map((e) => e.receipt_path));
+    const photosRemoved = await removeReceipts(expenses.map((e) => e.receipt_path));
+    if (
+      !photosRemoved &&
+      !confirm(
+        "Algunas fotos de boletas no se pudieron borrar (revisa tu conexión). Si sigues, quedarán guardadas sin que nadie las vea.\n\n¿Borrar igual?"
+      )
+    ) {
+      return;
+    }
     const { error } = await supabase.from("trips").delete().eq("id", trip.id);
     if (error) {
       alert("Error al borrar el viaje: " + error.message);
@@ -140,6 +157,13 @@ export default function TripScreen({ tripId }: { tripId: string }) {
       "Inicia sesión para ver este viaje. Si te invitaron por WhatsApp, abre el link de la invitación.",
       <button onClick={openAuth} className="bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs px-5 py-2.5 rounded-xl">
         Entrar
+      </button>
+    );
+  } else if (!trip && tripsFailed) {
+    body = message(
+      "No se pudieron cargar tus viajes. Revisa tu conexión a internet.",
+      <button onClick={fetchTrips} className="bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs px-5 py-2.5 rounded-xl">
+        Reintentar
       </button>
     );
   } else if (!trip) {
@@ -229,6 +253,8 @@ export default function TripScreen({ tripId }: { tripId: string }) {
             </div>
           )}
         </div>
+
+        {loadFailed && <LoadErrorBanner onRetry={fetchDetails} />}
 
         <div className="bg-slate-900/40 border border-slate-800/80 p-3 sm:p-5 rounded-2xl min-h-[400px]">
           {tab === "participants" && (

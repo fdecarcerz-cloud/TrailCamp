@@ -24,22 +24,25 @@ interface Invite {
 export default function InviteScreen({ token }: { token: string }) {
   const router = useRouter();
   const { authReady, userId, email, fetchTrips, openAuth } = useApp();
-  const [invite, setInvite] = useState<Invite | null | undefined>(undefined); // undefined = cargando
+  // undefined = cargando, null = link no válido, "error" = no se pudo consultar (sin conexión)
+  const [invite, setInvite] = useState<Invite | null | undefined | "error">(undefined);
+  const [retry, setRetry] = useState(0);
   const [joining, setJoining] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
   useEffect(() => {
     if (!authReady) return;
     supabase.rpc("ver_invitacion", { p_token: token }).then(({ data, error }) => {
-      const row = (data as Invite[] | null)?.[0] ?? null;
-      setInvite(error ? null : row);
+      // Un token con formato inválido también da error: se trata como link no válido
+      if (error) setInvite(error.code === "22P02" ? null : "error");
+      else setInvite((data as Invite[] | null)?.[0] ?? null);
     });
-  }, [authReady, userId, token]);
+  }, [authReady, userId, token, retry]);
 
   // Se recuerda el link mientras no haya sesión; con sesión ya se está aquí y se olvida
   // (así AppProvider no vuelve a traer a esta pantalla)
   useEffect(() => {
-    if (!authReady || invite === undefined) return;
+    if (!authReady || invite === undefined || invite === "error") return;
     if (invite && !userId) rememberInvite(token);
     else forgetInvite();
   }, [authReady, userId, invite, token]);
@@ -64,6 +67,21 @@ export default function InviteScreen({ token }: { token: string }) {
   let body: React.ReactNode;
   if (invite === undefined) {
     body = <p className="text-xs text-slate-500 animate-pulse">Cargando invitación...</p>;
+  } else if (invite === "error") {
+    body = (
+      <>
+        <p>No se pudo cargar la invitación. Revisa tu conexión a internet.</p>
+        <button
+          onClick={() => {
+            setInvite(undefined);
+            setRetry((n) => n + 1);
+          }}
+          className="bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs px-5 py-2.5 rounded-xl"
+        >
+          Reintentar
+        </button>
+      </>
+    );
   } else if (invite === null) {
     body = <p>Este link de invitación no es válido. Pídele uno nuevo a quien te invitó.</p>;
   } else {

@@ -8,7 +8,7 @@ import { CategoryChart, PeopleChart } from "@/components/expenses/ExpenseCharts"
 import { ReceiptViewer } from "@/components/expenses/Receipt";
 import { Expense, Participant } from "@/lib/types";
 import { errorMessage } from "@/lib/errors";
-import { removeReceipts, uploadReceipt } from "@/lib/receipts";
+import { RECEIPT_NOT_REMOVED, removeReceipts, uploadReceipt } from "@/lib/receipts";
 import {
   CATEGORY_INFO,
   type Transfer,
@@ -120,8 +120,8 @@ export default function ExpensesSection({
       setFormKey((k) => k + 1);
       onRefresh();
     } catch (err) {
-      await removeReceipts([uploaded]);
-      alert("Error guardando gasto: " + errorMessage(err));
+      const removed = await removeReceipts([uploaded]);
+      alert("Error guardando gasto: " + errorMessage(err) + (removed ? "" : "\n\n" + RECEIPT_NOT_REMOVED));
     } finally {
       setSaving(false);
     }
@@ -133,18 +133,22 @@ export default function ExpensesSection({
     try {
       if (d.photo) uploaded = await uploadReceipt(tripId, d.photo);
       const receipt_path = uploaded ?? (d.removePhoto ? null : (exp.receipt_path ?? null));
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from("expenses")
         .update({ ...draftToRow(d), receipt_path })
-        .eq("id", exp.id);
+        .eq("id", exp.id)
+        .select("id");
       if (error) throw error;
-      // La foto anterior ya no se usa
-      if (exp.receipt_path && exp.receipt_path !== receipt_path) await removeReceipts([exp.receipt_path]);
+      if (!data || data.length === 0) throw new Error("el gasto ya no existe (alguien lo borró).");
       setEditingId(null);
       onRefresh();
+      // La foto anterior ya no se usa
+      if (exp.receipt_path && exp.receipt_path !== receipt_path && !(await removeReceipts([exp.receipt_path]))) {
+        alert("El gasto se guardó. " + RECEIPT_NOT_REMOVED);
+      }
     } catch (err) {
-      await removeReceipts([uploaded]);
-      alert("Error actualizando gasto: " + errorMessage(err));
+      const removed = await removeReceipts([uploaded]);
+      alert("Error actualizando gasto: " + errorMessage(err) + (removed ? "" : "\n\n" + RECEIPT_NOT_REMOVED));
     } finally {
       setSaving(false);
     }
@@ -152,13 +156,14 @@ export default function ExpensesSection({
 
   const handleDeleteExpense = async (exp: Expense) => {
     if (!confirm(`¿Eliminar "${exp.description}"?`)) return;
-    const { error } = await supabase.from("expenses").delete().eq("id", exp.id);
-    if (error) {
-      alert("Error eliminando gasto: " + error.message);
+    const { data, error } = await supabase.from("expenses").delete().eq("id", exp.id).select("id");
+    if (error || !data || data.length === 0) {
+      alert("Error eliminando gasto: " + (error?.message ?? "ya no estaba o no tienes permiso."));
+      onRefresh();
       return;
     }
-    await removeReceipts([exp.receipt_path]);
     onRefresh();
+    if (!(await removeReceipts([exp.receipt_path]))) alert("El gasto se eliminó. " + RECEIPT_NOT_REMOVED);
   };
 
   // ---------- Pagos ----------
@@ -213,9 +218,11 @@ export default function ExpensesSection({
 
   const handleUndoSettlement = async (exp: Expense) => {
     if (!confirm(`¿Deshacer "${exp.description}" por ${clp(exp.amount)}? La deuda volverá a aparecer.`)) return;
-    const { error } = await supabase.from("expenses").delete().eq("id", exp.id);
-    if (error) alert("Error deshaciendo el pago: " + error.message);
-    else onRefresh();
+    const { data, error } = await supabase.from("expenses").delete().eq("id", exp.id).select("id");
+    if (error || !data || data.length === 0) {
+      alert("Error deshaciendo el pago: " + (error?.message ?? "ya no estaba o no tienes permiso."));
+    }
+    onRefresh();
   };
 
   // Formulario de pago (en línea, bajo la deuda o bajo "Registrar otro pago")

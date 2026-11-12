@@ -24,7 +24,7 @@ const KINDS: { id: TripKind; label: string; hint: string }[] = [
 // Editar y borrar solo los permite RLS al creador.
 export default function TripFormModal({ trip, onClose }: { trip: Trip | null; onClose: () => void }) {
   const router = useRouter();
-  const { userId, email, displayName, fetchTrips } = useApp();
+  const { userId, displayName, fetchTrips } = useApp();
   const [kind, setKind] = useState<TripKind>(trip?.kind ?? "viaje");
   const group = kind === "gastos";
   const [name, setName] = useState(trip?.name ?? "");
@@ -84,25 +84,25 @@ export default function TripFormModal({ trip, onClose }: { trip: Trip | null; on
       }
 
       if (!userId) return;
-      const { data, error } = await supabase
-        .from("trips")
-        .insert([{ ...fields, user_id: userId }])
-        .select()
-        .single();
+      // El viaje y el creador (Organizador) se crean juntos en la base: o las dos cosas o ninguna
+      const { data: tripId, error } = await supabase.rpc("crear_viaje", {
+        p_tipo: kind,
+        p_nombre: fields.name,
+        p_destino: fields.destination,
+        p_inicio: fields.start_date,
+        p_fin: fields.end_date,
+        p_lat: place?.lat ?? null,
+        p_lon: place?.lon ?? null,
+        p_lugar: place?.label ?? null,
+        p_mi_nombre: displayName,
+      });
       if (error) throw error;
 
-      if (data && email) {
-        const { error: participantError } = await supabase.from("participants").insert([
-          { trip_id: data.id, name: displayName, email, user_id: userId, role: "Organizador", status: "Confirmado" },
-        ]);
-        if (participantError) console.error("No se pudo sumar al organizador:", participantError.message);
-      }
-
       // Quienes tienen correo ya ven el viaje; al resto se le manda la invitación desde Equipo
-      if (data && crew.length > 0) {
+      if (tripId && crew.length > 0) {
         const { error: crewError } = await supabase.from("participants").insert(
           crew.map((c) => ({
-            trip_id: data.id,
+            trip_id: tripId,
             name: c.name,
             email: c.email,
             phone: c.phone,
@@ -115,7 +115,7 @@ export default function TripFormModal({ trip, onClose }: { trip: Trip | null; on
 
       await fetchTrips();
       onClose();
-      if (data) router.push(`/viaje/${data.id}`);
+      if (tripId) router.push(`/viaje/${tripId}`);
     } catch (err) {
       alert(`No se pudo guardar ${group ? "el grupo" : "el viaje"}: ` + errorMessage(err));
     } finally {

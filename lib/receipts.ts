@@ -42,10 +42,14 @@ export async function receiptUrl(path: string): Promise<string | null> {
   return data?.signedUrl ?? null;
 }
 
-// Borrar no debe frenar lo demás: si falla, queda una foto huérfana y nada más
-export async function removeReceipts(paths: (string | null | undefined)[]) {
+// Borrar no frena lo demás: devuelve false si alguna foto no se pudo borrar, para avisar
+// (queda guardada sin usarse)
+export async function removeReceipts(paths: (string | null | undefined)[]): Promise<boolean> {
   const list = paths.filter((p): p is string => !!p);
-  if (list.length === 0) return;
-  const { error } = await supabase.storage.from(BUCKET).remove(list);
-  if (error) console.error("No se pudo borrar la foto de la boleta:", error.message);
+  if (list.length === 0) return true;
+  const { data, error } = await supabase.storage.from(BUCKET).remove(list);
+  // Storage no da error si no tiene permiso sobre un archivo: solo no lo incluye en data
+  return !error && (data?.length ?? 0) === list.length;
 }
+
+export const RECEIPT_NOT_REMOVED = "La foto de la boleta no se pudo borrar (quedó guardada, pero ya nadie la ve).";

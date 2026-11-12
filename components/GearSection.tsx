@@ -125,15 +125,19 @@ export default function GearSection({
   const handleToggleStatus = async (item: GearItem) => {
     const nextStatus = item.status === "Empacado" ? (item.assigned_to ? "Asignado" : "Pendiente") : "Empacado";
     try {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from("gear")
         .update({ status: nextStatus })
-        .eq("id", item.id);
+        .eq("id", item.id)
+        .select("id");
 
       if (error) throw error;
+      if (!data || data.length === 0) throw new Error("ya no está en la lista (alguien lo borró).");
       onRefresh();
     } catch (err) {
-      console.error("Error al actualizar estado:", err);
+      alert(`No se pudo marcar "${item.name}": ${errorMessage(err)}`);
+      // La lista vuelve a lo que de verdad quedó guardado
+      onRefresh();
     }
   };
 
@@ -152,14 +156,17 @@ export default function GearSection({
     }
   };
 
-  const handleDeleteGear = async (id: string) => {
-    if (!confirm("¿Deseas eliminar este ítem de la lista?")) return;
+  const handleDeleteGear = async (item: GearItem) => {
+    if (!confirm(`¿Eliminar "${item.name}" de la lista?`)) return;
     try {
-      const { error } = await supabase.from("gear").delete().eq("id", id);
+      // Sin .select() un borrado que RLS ignora no da error: se pide la fila borrada para saberlo
+      const { data, error } = await supabase.from("gear").delete().eq("id", item.id).select("id");
       if (error) throw error;
+      if (!data || data.length === 0) throw new Error("ya no estaba en la lista o no tienes permiso.");
       onRefresh();
     } catch (err) {
-      console.error("Error eliminando material:", err);
+      alert(`No se pudo eliminar "${item.name}": ${errorMessage(err)}`);
+      onRefresh();
     }
   };
 
@@ -485,7 +492,7 @@ export default function GearSection({
                     ✎
                   </button>
                   <button
-                    onClick={() => handleDeleteGear(item.id)}
+                    onClick={() => handleDeleteGear(item)}
                     className="text-slate-500 hover:text-rose-400 text-xs px-1"
                     title="Eliminar material"
                   >
