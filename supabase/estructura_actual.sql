@@ -1,5 +1,5 @@
 -- Copia completa de la estructura de la base de datos de Supabase (schema public).
--- Foto tomada el 2026-11-13, después de aplicar migrations/20261113150000_gastos_papelera_cerrar.sql.
+-- Foto tomada el 2026-11-13, después de aplicar migrations/20261113160000_gastos_nota.sql.
 -- Incluye al final el bucket de Storage "boletas" y sus políticas.
 -- Sirve para recrear la base de datos desde cero en un proyecto vacío (SQL Editor -> pegar -> Run).
 -- No contiene datos (viajes, gastos, etc.), solo la estructura.
@@ -42,7 +42,8 @@ create table if not exists public.expenses (
   updated_by_name text,
   deleted_at timestamp with time zone,
   deleted_by uuid,
-  deleted_by_name text
+  deleted_by_name text,
+  notes text
 );
 
 create table if not exists public.gear (
@@ -100,6 +101,8 @@ alter table trips add constraint trips_pkey PRIMARY KEY (id);
 alter table carpools add constraint carpools_trip_id_fkey FOREIGN KEY (trip_id) REFERENCES trips(id) ON DELETE CASCADE;
 
 alter table expenses add constraint expenses_category_valida CHECK (((category IS NULL) OR (category = ANY (ARRAY['Comida'::text, 'Transporte'::text, 'Alojamiento'::text, 'Actividades'::text, 'Otros'::text]))));
+
+alter table expenses add constraint expenses_notes_largo CHECK (((notes IS NULL) OR (char_length(notes) <= 1000)));
 
 alter table expenses add constraint expenses_split_mode_valido CHECK ((split_mode = ANY (ARRAY['igual'::text, 'partes'::text, 'montos'::text])));
 
@@ -787,10 +790,10 @@ begin
   new.deleted_by_name := old.deleted_by_name;
 
   if (new.trip_id, new.description, new.amount, new.paid_by, new.split_between, new.split_mode,
-      new.split_values, new.category, new.receipt_path, new.expense_date, new.is_settlement)
+      new.split_values, new.category, new.receipt_path, new.expense_date, new.is_settlement, new.notes)
      is distinct from
      (old.trip_id, old.description, old.amount, old.paid_by, old.split_between, old.split_mode,
-      old.split_values, old.category, old.receipt_path, old.expense_date, old.is_settlement) then
+      old.split_values, old.category, old.receipt_path, old.expense_date, old.is_settlement, old.notes) then
     new.updated_at := now();
     new.updated_by := (select auth.uid());
     new.updated_by_name := public.mi_nombre_en_viaje(new.trip_id);

@@ -25,6 +25,7 @@ export interface ExpenseDraft {
   split_values: number[] | null;
   category: Category;
   expense_date: string; // "AAAA-MM-DD"
+  notes: string | null;
   // Foto de la boleta: una nueva para subir, o quitar la que había (si no, queda igual)
   photo: File | null;
   removePhoto: boolean;
@@ -69,6 +70,7 @@ export default function ExpenseForm({
   const [amount, setAmount] = useState<string>(initial ? String(initial.amount) : "");
   const [paidBy, setPaidBy] = useState(initial?.paid_by ?? "");
   const [date, setDate] = useState(() => (initial && expenseDate(initial)) || todayISO());
+  const [notes, setNotes] = useState(initial?.notes ?? "");
   const [mode, setMode] = useState<SplitMode>(initial?.split_mode ?? "igual");
   const [included, setIncluded] = useState<string[]>(
     initial ? initial.split_between.filter((n) => names.includes(n)) : names
@@ -150,6 +152,7 @@ export default function ExpenseForm({
       split_values: mode === "igual" ? null : people.map(valueOf),
       category,
       expense_date: date,
+      notes: notes.trim() || null,
       photo,
       removePhoto: removePhoto && !photo,
     });
@@ -308,6 +311,18 @@ export default function ExpenseForm({
             {remaining > 0 ? `Faltan ${clp(remaining)} por repartir` : `Sobran ${clp(-remaining)}`}
           </p>
         )}
+      </div>
+
+      <div>
+        <label className="text-slate-400 block mb-1">Nota (opcional)</label>
+        <textarea
+          rows={2}
+          maxLength={500}
+          placeholder="Ej: incluye la leña y el hielo; se pagó con tarjeta"
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          className={`${inputClass} resize-y`}
+        />
       </div>
 
       <div className="space-y-1.5">

@@ -71,6 +71,8 @@ export interface Expense {
   category?: string | null;
   // Foto opcional de la boleta: ruta en el bucket "boletas" (ver lib/receipts.ts)
   receipt_path?: string | null;
+  // Nota opcional con más detalle (se ve al tocar el gasto)
+  notes?: string | null;
   created_at?: string;
   // Historial (lo llena la base desde la sesión). Los gastos antiguos lo tienen vacío.
   expense_date?: string | null; // "AAAA-MM-DD"

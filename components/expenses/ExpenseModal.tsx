@@ -50,7 +50,7 @@ export default function ExpenseModal({ expense, gone = false, participants, savi
 
 // "Registrado por Ana el 13 nov, 14:30 · Modificado por Beto el ...". Los gastos anteriores al
 // historial no lo tienen y no muestran nada.
-function ExpenseHistory({ expense, participants }: { expense: Expense; participants: Participant[] }) {
+export function ExpenseHistory({ expense, participants }: { expense: Expense; participants: Participant[] }) {
   const created = expense.created_by_name && expense.created_at;
   const updated = expense.updated_by_name && expense.updated_at;
   if (!created && !updated) return null;

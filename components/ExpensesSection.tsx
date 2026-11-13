@@ -4,6 +4,7 @@ import { useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { type ExpenseDraft } from "@/components/expenses/ExpenseForm";
 import ExpenseModal from "@/components/expenses/ExpenseModal";
+import ExpenseDetail from "@/components/expenses/ExpenseDetail";
 import { CategoryChart, PeopleChart } from "@/components/expenses/ExpenseCharts";
 import { ReceiptViewer } from "@/components/expenses/Receipt";
 import { Expense, Participant } from "@/lib/types";
@@ -60,6 +61,8 @@ export default function ExpensesSection({
 }: ExpensesSectionProps) {
   const [saving, setSaving] = useState(false);
   const [adding, setAdding] = useState(false); // ventana de gasto nuevo abierta
+  // Gasto que se está viendo al tocarlo en la lista (copia de cuando se abrió)
+  const [viewing, setViewing] = useState<Expense | null>(null);
   // Gasto que se edita en la ventana emergente (copia de cuando se abrió)
   const [editing, setEditing] = useState<Expense | null>(null);
   const [payment, setPayment] = useState<PaymentDraft | null>(null);
@@ -124,6 +127,7 @@ export default function ExpensesSection({
     split_values: d.split_values,
     category: d.category,
     expense_date: d.expense_date,
+    notes: d.notes,
   });
 
   // La foto se sube primero; si después falla el guardado, se borra para no dejarla suelta
@@ -175,14 +179,16 @@ export default function ExpensesSection({
 
   // ---------- Papelera ----------
 
-  // Borrar un gasto o deshacer un pago lo manda a la papelera (con su foto), no lo borra
+  // Borrar un gasto o deshacer un pago lo manda a la papelera (con su foto), no lo borra.
+  // Devuelve si quedó en la papelera.
   const moveToTrash = async (exp: Expense, question: string, errorPrefix: string) => {
-    if (!confirm(question)) return;
+    if (!confirm(question)) return false;
     setBusyId(String(exp.id));
     const { error } = await supabase.rpc("mandar_gasto_a_papelera", { p_gasto: exp.id });
     setBusyId(null);
     if (error) alert(errorPrefix + errorMessage(error));
     onRefresh();
+    return !error;
   };
 
   const handleDeleteExpense = (exp: Expense) =>
@@ -362,6 +368,9 @@ export default function ExpensesSection({
       .join(" · ");
   };
 
+  // La versión actual del gasto abierto (cambia si otra persona lo edita); null si ya no está
+  const viewed = viewing ? (realExpenses.find((e) => String(e.id) === String(viewing.id)) ?? null) : null;
+
   const isPaymentForTransfer = (t: Transfer) =>
     payment?.owed !== undefined && payment.from === t.from && payment.to === t.to;
 
@@ -510,6 +519,27 @@ export default function ExpensesSection({
         <ExpenseModal participants={participants} saving={saving} onSubmit={handleAddExpense} onClose={() => setAdding(false)} />
       )}
 
+      {viewing && (
+        <ExpenseDetail
+          key={viewing.id}
+          expense={viewed}
+          opened={viewing}
+          participants={participants}
+          myName={myName}
+          busy={busyId === String(viewing.id)}
+          onEdit={() => {
+            // Se edita la versión actual, no la de cuando se abrió
+            setEditing(viewed ?? viewing);
+            setViewing(null);
+          }}
+          onTrash={async () => {
+            if (await handleDeleteExpense(viewed ?? viewing)) setViewing(null);
+          }}
+          onViewReceipt={() => setViewingReceipt(viewed)}
+          onClose={() => setViewing(null)}
+        />
+      )}
+
       {editing && (
         <ExpenseModal
           key={editing.id}
@@ -531,10 +561,13 @@ export default function ExpensesSection({
         ) : (
           realExpenses.map((exp) => {
             const cat = categoryOf(exp);
+            // Tocar el gasto abre todo su detalle; desde ahí se edita o se manda a la papelera
             return (
-              <div
+              <button
                 key={exp.id}
-                className="bg-slate-900/60 border border-slate-800 p-3.5 rounded-xl flex items-center justify-between gap-3"
+                type="button"
+                onClick={() => setViewing(exp)}
+                className="w-full text-left bg-slate-900/60 border border-slate-800 hover:border-slate-600 active:bg-slate-800/60 p-3.5 rounded-xl flex items-center justify-between gap-3 transition-colors"
               >
                 <div className="flex items-start gap-3 min-w-0">
                   <span className="text-lg leading-none mt-0.5" title={cat}>
@@ -553,35 +586,21 @@ export default function ExpensesSection({
                   </div>
                 </div>
 
-                <div className="flex items-center gap-3 shrink-0">
-                  <span className="font-mono text-sm font-bold text-emerald-400">{clp(exp.amount)}</span>
-                  {exp.receipt_path && (
-                    <button
-                      onClick={() => setViewingReceipt(exp)}
-                      className="text-sm leading-none px-0.5 opacity-80 hover:opacity-100"
-                      title="Ver la boleta"
-                      aria-label={`Ver la boleta de ${exp.description}`}
-                    >
-                      🧾
-                    </button>
-                  )}
-                  <button
-                    onClick={() => setEditing(exp)}
-                    className="text-slate-400 hover:text-slate-200 text-xs px-1"
-                    title="Editar gasto"
-                  >
-                    ✎
-                  </button>
-                  <button
-                    onClick={() => handleDeleteExpense(exp)}
-                    disabled={busyId === String(exp.id)}
-                    className="text-slate-500 hover:text-rose-400 text-xs px-1 disabled:opacity-40"
-                    title="Mandar a la papelera"
-                  >
-                    {busyId === String(exp.id) ? "…" : "✕"}
-                  </button>
+                <div className="flex items-center gap-2 shrink-0">
+                  <div className="text-right">
+                    <span className="font-mono text-sm font-bold text-emerald-400 block">{clp(exp.amount)}</span>
+                    {(exp.notes || exp.receipt_path) && (
+                      <span className="text-[11px] leading-none opacity-80">
+                        {exp.notes && <span title="Tiene nota">📝</span>}
+                        {exp.receipt_path && <span title="Tiene boleta">🧾</span>}
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-slate-500 text-base leading-none" aria-hidden>
+                    ›
+                  </span>
                 </div>
-              </div>
+              </button>
             );
           })
         )}
