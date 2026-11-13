@@ -34,6 +34,8 @@ interface ExpenseFormProps {
   submitLabel: string;
   onSubmit: (draft: ExpenseDraft) => void;
   onCancel?: () => void;
+  // Sin recuadro propio (dentro de una ventana que ya lo tiene)
+  bare?: boolean;
 }
 
 const inputClass =
@@ -47,6 +49,7 @@ export default function ExpenseForm({
   submitLabel,
   onSubmit,
   onCancel,
+  bare = false,
 }: ExpenseFormProps) {
   const names = participants.map((p) => p.name);
 
@@ -148,7 +151,10 @@ export default function ExpenseForm({
   };
 
   return (
-    <form onSubmit={handleSubmit} className="bg-slate-950/60 border border-slate-800 p-4 rounded-xl space-y-4 text-xs">
+    <form
+      onSubmit={handleSubmit}
+      className={`space-y-4 text-xs ${bare ? "" : "bg-slate-950/60 border border-slate-800 p-4 rounded-xl"}`}
+    >
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div>
           <label className="text-slate-400 block mb-1">Descripción</label>

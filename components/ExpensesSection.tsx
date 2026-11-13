@@ -3,8 +3,8 @@
 import { useState } from "react";
 import { supabase } from "@/lib/supabase";
 import AddFormToggle from "@/components/AddFormToggle";
-import DeletedWhileEditing from "@/components/DeletedWhileEditing";
 import ExpenseForm, { type ExpenseDraft } from "@/components/expenses/ExpenseForm";
+import EditExpenseModal from "@/components/expenses/EditExpenseModal";
 import { CategoryChart, PeopleChart } from "@/components/expenses/ExpenseCharts";
 import { ReceiptViewer } from "@/components/expenses/Receipt";
 import { Expense, Participant } from "@/lib/types";
@@ -52,7 +52,8 @@ export default function ExpensesSection({
 }: ExpensesSectionProps) {
   const [saving, setSaving] = useState(false);
   const [formKey, setFormKey] = useState(0); // para vaciar el formulario después de guardar
-  const [editingId, setEditingId] = useState<string | null>(null);
+  // Gasto que se edita en la ventana emergente (copia de cuando se abrió)
+  const [editing, setEditing] = useState<Expense | null>(null);
   const [payment, setPayment] = useState<PaymentDraft | null>(null);
   const [savingPayment, setSavingPayment] = useState(false);
   const [showCharts, setShowCharts] = useState(false);
@@ -141,7 +142,7 @@ export default function ExpensesSection({
         .select("id");
       if (error) throw error;
       if (!data || data.length === 0) throw new Error("el gasto ya no existe (alguien lo borró).");
-      setEditingId(null);
+      setEditing(null);
       onRefresh();
       // La foto anterior ya no se usa
       if (exp.receipt_path && exp.receipt_path !== receipt_path && !(await removeReceipts([exp.receipt_path]))) {
@@ -457,14 +458,22 @@ export default function ExpensesSection({
         <ExpenseForm
           key={formKey}
           participants={participants}
-          saving={saving && editingId === null}
+          saving={saving && editing === null}
           submitLabel="+ Registrar gasto"
           onSubmit={handleAddExpense}
         />
       </AddFormToggle>
 
-      {editingId !== null && !realExpenses.some((e) => String(e.id) === String(editingId)) && (
-        <DeletedWhileEditing what="el gasto" onClose={() => setEditingId(null)} />
+      {editing && (
+        <EditExpenseModal
+          key={editing.id}
+          expense={editing}
+          gone={!realExpenses.some((e) => String(e.id) === String(editing.id))}
+          participants={participants}
+          saving={saving}
+          onSubmit={(d) => handleUpdateExpense(editing, d)}
+          onClose={() => setEditing(null)}
+        />
       )}
 
       {/* Lista de gastos */}
@@ -475,19 +484,6 @@ export default function ExpensesSection({
           </div>
         ) : (
           realExpenses.map((exp) => {
-            if (editingId === exp.id) {
-              return (
-                <ExpenseForm
-                  key={exp.id}
-                  participants={participants}
-                  initial={exp}
-                  saving={saving}
-                  submitLabel="Guardar cambios"
-                  onSubmit={(d) => handleUpdateExpense(exp, d)}
-                  onCancel={() => setEditingId(null)}
-                />
-              );
-            }
             const cat = categoryOf(exp);
             return (
               <div
@@ -522,7 +518,7 @@ export default function ExpensesSection({
                     </button>
                   )}
                   <button
-                    onClick={() => setEditingId(exp.id)}
+                    onClick={() => setEditing(exp)}
                     className="text-slate-400 hover:text-slate-200 text-xs px-1"
                     title="Editar gasto"
                   >
