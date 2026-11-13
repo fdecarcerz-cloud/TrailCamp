@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { supabase } from "@/lib/supabase";
 import AddFormToggle from "@/components/AddFormToggle";
-import DeletedWhileEditing from "@/components/DeletedWhileEditing";
+import Modal, { GoneNotice } from "@/components/Modal";
 import { Participant } from "@/lib/types";
 import { formatPhone, normalizePhone, whatsappLink } from "@/lib/phone";
 import { errorMessage } from "@/lib/errors";
@@ -28,6 +28,9 @@ interface ParticipantsSectionProps {
 }
 
 const normalize = (s: string) => s.trim().toLowerCase();
+
+const modalInput =
+  "w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-emerald-500";
 
 const PHONE_HELP = "Revisa el celular. Escríbelo como 9 1234 5678, o con + y el código del país si no es de Chile.";
 
@@ -81,7 +84,8 @@ export default function ParticipantsSection({
   const [loading, setLoading] = useState(false);
 
   // Edición
-  const [editingId, setEditingId] = useState<string | null>(null);
+  // Persona que se edita en la ventana emergente (copia de cuando se abrió)
+  const [editing, setEditing] = useState<Participant | null>(null);
   const [editName, setEditName] = useState("");
   const [editEmail, setEditEmail] = useState("");
   const [editPhone, setEditPhone] = useState("");
@@ -137,7 +141,7 @@ export default function ParticipantsSection({
   };
 
   const startEditing = (p: Participant) => {
-    setEditingId(p.id);
+    setEditing(p);
     setEditName(p.name);
     setEditEmail(p.email ?? "");
     setEditPhone(p.phone ? formatPhone(p.phone) : "");
@@ -171,7 +175,7 @@ export default function ParticipantsSection({
       });
       if (error) throw error;
 
-      setEditingId(null);
+      setEditing(null);
       onRefresh();
     } catch (err) {
       alert("No se pudo guardar: " + errorMessage(err));
@@ -272,8 +276,83 @@ export default function ParticipantsSection({
         </form>
       </AddFormToggle>
 
-      {editingId !== null && !participants.some((p) => String(p.id) === String(editingId)) && (
-        <DeletedWhileEditing what="a la persona" onClose={() => setEditingId(null)} />
+      {editing && (
+        <Modal title={`✎ Editar a ${editing.name}`} onClose={() => setEditing(null)}>
+          {!participants.some((p) => String(p.id) === String(editing.id)) ? (
+            <GoneNotice text={`Otra persona sacó a ${editing.name} del equipo mientras lo editabas.`} onClose={() => setEditing(null)} />
+          ) : (
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleSaveEdit(editing);
+              }}
+              className="space-y-3 text-xs"
+            >
+              <div>
+                <label className="text-slate-400 block mb-1">Nombre</label>
+                <input
+                  type="text"
+                  required
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  className={modalInput}
+                />
+              </div>
+              <div>
+                <label className="text-slate-400 block mb-1">Email</label>
+                <input
+                  type="email"
+                  value={editEmail}
+                  onChange={(e) => setEditEmail(e.target.value)}
+                  placeholder="Sin correo"
+                  className={modalInput}
+                />
+              </div>
+              <div>
+                <label className="text-slate-400 block mb-1">Celular</label>
+                <input
+                  type="tel"
+                  inputMode="tel"
+                  value={editPhone}
+                  onChange={(e) => setEditPhone(e.target.value)}
+                  placeholder="Sin celular"
+                  className={modalInput}
+                />
+              </div>
+              <div>
+                <label className="text-slate-400 block mb-1">Rol</label>
+                <select value={editRole} onChange={(e) => setEditRole(e.target.value as Role)} className={modalInput}>
+                  {ROLES.map((r) => (
+                    <option key={r} value={r}>
+                      {r}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {normalize(editName) !== normalize(editing.name) && (
+                <p className="text-[11px] text-amber-300">
+                  El nombre se cambiará también en gastos, material y autos.
+                </p>
+              )}
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setEditing(null)}
+                  className="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 font-semibold"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingEdit}
+                  className="px-4 py-2 rounded-lg bg-emerald-600 text-white font-semibold hover:bg-emerald-500 disabled:opacity-50"
+                >
+                  {savingEdit ? "Guardando..." : "Guardar cambios"}
+                </button>
+              </div>
+            </form>
+          )}
+        </Modal>
       )}
 
       {/* Lista de integrantes */}
@@ -284,82 +363,6 @@ export default function ParticipantsSection({
           </div>
         ) : (
           participants.map((p) => {
-            if (editingId === p.id) {
-              return (
-                <div
-                  key={p.id}
-                  className="bg-slate-900/90 border border-emerald-500/50 p-3 rounded-xl space-y-2 text-xs"
-                >
-                  <div>
-                    <label className="text-slate-400 block mb-0.5">Nombre</label>
-                    <input
-                      type="text"
-                      value={editName}
-                      onChange={(e) => setEditName(e.target.value)}
-                      className="w-full bg-slate-950 border border-slate-700 rounded-md px-2 py-1 text-white"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-slate-400 block mb-0.5">Email</label>
-                    <input
-                      type="email"
-                      value={editEmail}
-                      onChange={(e) => setEditEmail(e.target.value)}
-                      placeholder="Sin correo"
-                      className="w-full bg-slate-950 border border-slate-700 rounded-md px-2 py-1 text-white"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-slate-400 block mb-0.5">Celular</label>
-                    <input
-                      type="tel"
-                      inputMode="tel"
-                      value={editPhone}
-                      onChange={(e) => setEditPhone(e.target.value)}
-                      placeholder="Sin celular"
-                      className="w-full bg-slate-950 border border-slate-700 rounded-md px-2 py-1 text-white"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-slate-400 block mb-0.5">Rol</label>
-                    <select
-                      value={editRole}
-                      onChange={(e) => setEditRole(e.target.value as Role)}
-                      className="w-full bg-slate-950 border border-slate-700 rounded-md px-2 py-1 text-white"
-                    >
-                      {ROLES.map((r) => (
-                        <option key={r} value={r}>
-                          {r}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  {normalize(editName) !== normalize(p.name) && (
-                    <p className="text-[10px] text-slate-400">
-                      El nombre se cambiará también en gastos, material y autos.
-                    </p>
-                  )}
-                  <div className="flex justify-end gap-2 pt-1">
-                    <button
-                      type="button"
-                      onClick={() => setEditingId(null)}
-                      className="px-3 py-1 rounded bg-slate-800 text-slate-300 hover:bg-slate-700"
-                    >
-                      Cancelar
-                    </button>
-                    <button
-                      type="button"
-                      disabled={savingEdit}
-                      onClick={() => handleSaveEdit(p)}
-                      className="px-3 py-1 rounded bg-emerald-600 text-white font-medium hover:bg-emerald-500 disabled:opacity-50"
-                    >
-                      {savingEdit ? "Guardando..." : "Guardar"}
-                    </button>
-                  </div>
-                </div>
-              );
-            }
-
             return (
               <div key={p.id} className="bg-slate-900/60 border border-slate-800 p-3 rounded-xl space-y-2">
               <div className="flex items-center justify-between gap-2">

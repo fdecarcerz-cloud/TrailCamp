@@ -2,9 +2,8 @@
 
 import { useState } from "react";
 import { supabase } from "@/lib/supabase";
-import AddFormToggle from "@/components/AddFormToggle";
-import ExpenseForm, { type ExpenseDraft } from "@/components/expenses/ExpenseForm";
-import EditExpenseModal from "@/components/expenses/EditExpenseModal";
+import { type ExpenseDraft } from "@/components/expenses/ExpenseForm";
+import ExpenseModal from "@/components/expenses/ExpenseModal";
 import { CategoryChart, PeopleChart } from "@/components/expenses/ExpenseCharts";
 import { ReceiptViewer } from "@/components/expenses/Receipt";
 import { Expense, Participant } from "@/lib/types";
@@ -51,7 +50,7 @@ export default function ExpensesSection({
   onRefresh,
 }: ExpensesSectionProps) {
   const [saving, setSaving] = useState(false);
-  const [formKey, setFormKey] = useState(0); // para vaciar el formulario después de guardar
+  const [adding, setAdding] = useState(false); // ventana de gasto nuevo abierta
   // Gasto que se edita en la ventana emergente (copia de cuando se abrió)
   const [editing, setEditing] = useState<Expense | null>(null);
   const [payment, setPayment] = useState<PaymentDraft | null>(null);
@@ -119,7 +118,7 @@ export default function ExpensesSection({
         .from("expenses")
         .insert([{ trip_id: tripId, ...draftToRow(d), receipt_path: uploaded }]);
       if (error) throw error;
-      setFormKey((k) => k + 1);
+      setAdding(false);
       onRefresh();
     } catch (err) {
       const removed = await removeReceipts([uploaded]);
@@ -453,19 +452,19 @@ export default function ExpensesSection({
         </div>
       </div>
 
-      {/* Formulario nuevo gasto */}
-      <AddFormToggle label="+ Registrar gasto">
-        <ExpenseForm
-          key={formKey}
-          participants={participants}
-          saving={saving && editing === null}
-          submitLabel="+ Registrar gasto"
-          onSubmit={handleAddExpense}
-        />
-      </AddFormToggle>
+      <button
+        onClick={() => setAdding(true)}
+        className="w-full bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold py-2.5 rounded-xl transition-colors"
+      >
+        + Registrar gasto
+      </button>
+
+      {adding && (
+        <ExpenseModal participants={participants} saving={saving} onSubmit={handleAddExpense} onClose={() => setAdding(false)} />
+      )}
 
       {editing && (
-        <EditExpenseModal
+        <ExpenseModal
           key={editing.id}
           expense={editing}
           gone={!realExpenses.some((e) => String(e.id) === String(editing.id))}

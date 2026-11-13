@@ -271,7 +271,7 @@ export default function ExpenseForm({
                         inputMode="decimal"
                         value={values[p.name] ?? (mode === "partes" ? "1" : "")}
                         onChange={(e) => setValues((v) => ({ ...v, [p.name]: e.target.value }))}
-                        className="w-14 sm:w-20 bg-slate-900 border border-slate-700 rounded-md px-2 py-1 text-right text-white"
+                        className="w-20 bg-slate-900 border border-slate-700 rounded-md px-2 py-1 text-right text-white"
                         aria-label={mode === "partes" ? `Partes de ${p.name}` : `Monto de ${p.name}`}
                       />
                       {mode === "partes" && <span className="hidden sm:inline text-slate-500">partes</span>}
