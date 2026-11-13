@@ -193,7 +193,7 @@ export default function TripFormModal({ trip, onClose }: { trip: Trip | null; on
             )}
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <div>
+            <div className="min-w-0">
               <label className="block text-slate-400 mb-1 font-medium">{group ? "Desde (opcional)" : "Desde"}</label>
               <input
                 type="date"
@@ -204,7 +204,7 @@ export default function TripFormModal({ trip, onClose }: { trip: Trip | null; on
                 className={`${inputClass} [color-scheme:dark] cursor-pointer`}
               />
             </div>
-            <div>
+            <div className="min-w-0">
               <label className="block text-slate-400 mb-1 font-medium">{group ? "Hasta (opcional)" : "Hasta"}</label>
               <input
                 type="date"

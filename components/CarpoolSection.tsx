@@ -340,7 +340,7 @@ export default function CarpoolSection({
                 />
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <div>
+                <div className="min-w-0">
                   <label className="text-slate-400 block mb-1">Hora de salida</label>
                   <input
                     type="time"
@@ -350,7 +350,7 @@ export default function CarpoolSection({
                     className={`${modalInput} [color-scheme:dark]`}
                   />
                 </div>
-                <div>
+                <div className="min-w-0">
                   <label className="text-slate-400 block mb-1">Asientos para pasajeros</label>
                   <input
                     type="number"
