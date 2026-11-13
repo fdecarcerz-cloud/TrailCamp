@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { supabase } from "@/lib/supabase";
 import AddFormToggle from "@/components/AddFormToggle";
+import DeletedWhileEditing from "@/components/DeletedWhileEditing";
 import SuggestGearModal from "@/components/gear/SuggestGearModal";
 import { GearItem, Participant } from "@/lib/types";
 import { errorMessage } from "@/lib/errors";
@@ -304,6 +305,10 @@ export default function GearSection({
           </button>
         </form>
       </AddFormToggle>
+
+      {editingId !== null && !gear.some((g) => String(g.id) === String(editingId)) && (
+        <DeletedWhileEditing what="el ítem" onClose={() => setEditingId(null)} />
+      )}
 
       {/* Lista de material */}
       <div className="space-y-2">

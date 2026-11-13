@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { supabase } from "@/lib/supabase";
 import AddFormToggle from "@/components/AddFormToggle";
+import DeletedWhileEditing from "@/components/DeletedWhileEditing";
 import { Participant } from "@/lib/types";
 import { formatPhone, normalizePhone, whatsappLink } from "@/lib/phone";
 import { errorMessage } from "@/lib/errors";
@@ -270,6 +271,10 @@ export default function ParticipantsSection({
           </button>
         </form>
       </AddFormToggle>
+
+      {editingId !== null && !participants.some((p) => String(p.id) === String(editingId)) && (
+        <DeletedWhileEditing what="a la persona" onClose={() => setEditingId(null)} />
+      )}
 
       {/* Lista de integrantes */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">

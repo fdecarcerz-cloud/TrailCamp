@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { supabase } from "@/lib/supabase";
 import AddFormToggle from "@/components/AddFormToggle";
+import DeletedWhileEditing from "@/components/DeletedWhileEditing";
 import ExpenseForm, { type ExpenseDraft } from "@/components/expenses/ExpenseForm";
 import { CategoryChart, PeopleChart } from "@/components/expenses/ExpenseCharts";
 import { ReceiptViewer } from "@/components/expenses/Receipt";
@@ -461,6 +462,10 @@ export default function ExpensesSection({
           onSubmit={handleAddExpense}
         />
       </AddFormToggle>
+
+      {editingId !== null && !realExpenses.some((e) => String(e.id) === String(editingId)) && (
+        <DeletedWhileEditing what="el gasto" onClose={() => setEditingId(null)} />
+      )}
 
       {/* Lista de gastos */}
       <div className="space-y-2">
