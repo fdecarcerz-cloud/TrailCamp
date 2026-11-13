@@ -11,8 +11,10 @@ import {
   SPLIT_LABELS,
   categoryOf,
   clp,
+  expenseDate,
   guessCategory,
 } from "@/lib/expenses";
+import { todayISO } from "@/lib/dates";
 
 export interface ExpenseDraft {
   description: string;
@@ -22,6 +24,7 @@ export interface ExpenseDraft {
   split_mode: SplitMode;
   split_values: number[] | null;
   category: Category;
+  expense_date: string; // "AAAA-MM-DD"
   // Foto de la boleta: una nueva para subir, o quitar la que había (si no, queda igual)
   photo: File | null;
   removePhoto: boolean;
@@ -65,6 +68,7 @@ export default function ExpenseForm({
   const [description, setDescription] = useState(initial?.description ?? "");
   const [amount, setAmount] = useState<string>(initial ? String(initial.amount) : "");
   const [paidBy, setPaidBy] = useState(initial?.paid_by ?? "");
+  const [date, setDate] = useState(() => (initial && expenseDate(initial)) || todayISO());
   const [mode, setMode] = useState<SplitMode>(initial?.split_mode ?? "igual");
   const [included, setIncluded] = useState<string[]>(
     initial ? initial.split_between.filter((n) => names.includes(n)) : names
@@ -115,8 +119,8 @@ export default function ExpenseForm({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
-    if (!description.trim() || total <= 0 || !paidBy) {
-      setError("Completa la descripción, el monto y quién pagó.");
+    if (!description.trim() || total <= 0 || !paidBy || !date) {
+      setError("Completa la descripción, el monto, la fecha y quién pagó.");
       return;
     }
     if (ordered.length === 0) {
@@ -145,6 +149,7 @@ export default function ExpenseForm({
       split_mode: mode,
       split_values: mode === "igual" ? null : people.map(valueOf),
       category,
+      expense_date: date,
       photo,
       removePhoto: removePhoto && !photo,
     });
@@ -155,8 +160,8 @@ export default function ExpenseForm({
       onSubmit={handleSubmit}
       className={`space-y-4 text-xs ${bare ? "" : "bg-slate-950/60 border border-slate-800 p-4 rounded-xl"}`}
     >
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <div>
+      <div className="grid grid-cols-2 gap-3">
+        <div className="col-span-2">
           <label className="text-slate-400 block mb-1">Descripción</label>
           <input
             type="text"
@@ -198,7 +203,7 @@ export default function ExpenseForm({
           </div>
         </div>
 
-        <div>
+        <div className="min-w-0">
           <label className="text-slate-400 block mb-1">Monto ($)</label>
           <input
             type="number"
@@ -212,7 +217,19 @@ export default function ExpenseForm({
           />
         </div>
 
-        <div>
+        <div className="min-w-0">
+          <label className="text-slate-400 block mb-1">Fecha</label>
+          <input
+            type="date"
+            required
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+            onClick={(e) => e.currentTarget.showPicker?.()}
+            className={`${inputClass} [color-scheme:dark] cursor-pointer`}
+          />
+        </div>
+
+        <div className="col-span-2">
           <label className="text-slate-400 block mb-1">¿Quién pagó?</label>
           <select required value={paidBy} onChange={(e) => setPaidBy(e.target.value)} className={inputClass}>
             <option value="">Seleccionar...</option>

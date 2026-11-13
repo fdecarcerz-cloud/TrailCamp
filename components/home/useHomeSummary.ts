@@ -27,7 +27,8 @@ export function useHomeSummary(): { summary: HomeSummary | null; failed: boolean
       supabase.from("participants").select("*").in("trip_id", ids),
       supabase.from("gear").select("*").in("trip_id", ids),
       supabase.from("carpools").select("*").in("trip_id", ids),
-      supabase.from("expenses").select("*").in("trip_id", ids),
+      // Lo de la papelera no cuenta en pendientes ni estadísticas
+      supabase.from("expenses").select("*").in("trip_id", ids).is("deleted_at", null),
     ]);
     if (p.error || g.error || c.error || e.error || !p.data || !g.data || !c.data || !e.data) {
       setFailed(true);

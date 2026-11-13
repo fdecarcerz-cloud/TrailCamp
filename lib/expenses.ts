@@ -1,4 +1,5 @@
 import type { Expense, Participant } from "@/lib/types";
+import { todayISO } from "@/lib/dates";
 
 // ---------- Categorías (se deducen de la descripción; el usuario puede cambiarla) ----------
 
@@ -184,3 +185,30 @@ export const clp = (n: number) => {
   const r = Math.round(n);
   return (r < 0 ? "-$" : "$") + Math.abs(r).toLocaleString("es-CL");
 };
+
+// ---------- Historial y papelera ----------
+
+export const inTrash = (e: Expense) => !!e.deleted_at;
+
+// Fecha del gasto ("AAAA-MM-DD"). Los antiguos no la tienen: se usa el día en que se registraron.
+export function expenseDate(e: Expense): string {
+  if (e.expense_date) return e.expense_date;
+  return e.created_at ? todayISO(new Date(e.created_at)) : "";
+}
+
+// Quién hizo algo: el nombre actual de su tarjeta en el equipo (por si lo renombraron) o, si
+// ya no está, el nombre que tenía en ese momento
+export function personName(participants: Participant[], userId?: string | null, savedName?: string | null) {
+  return (userId && participants.find((p) => p.user_id === userId)?.name) || savedName || "alguien";
+}
+
+// "13 nov, 14:30" en hora de Chile
+export function formatWhen(timestamp: string): string {
+  return new Date(timestamp).toLocaleString("es-CL", {
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "America/Santiago",
+  });
+}

@@ -71,4 +71,16 @@ export interface Expense {
   category?: string | null;
   // Foto opcional de la boleta: ruta en el bucket "boletas" (ver lib/receipts.ts)
   receipt_path?: string | null;
+  created_at?: string;
+  // Historial (lo llena la base desde la sesión). Los gastos antiguos lo tienen vacío.
+  expense_date?: string | null; // "AAAA-MM-DD"
+  created_by?: string | null;
+  created_by_name?: string | null;
+  updated_at?: string | null;
+  updated_by?: string | null;
+  updated_by_name?: string | null;
+  // En la papelera: no cuenta en totales, saldos, pendientes ni estadísticas
+  deleted_at?: string | null;
+  deleted_by?: string | null;
+  deleted_by_name?: string | null;
 }

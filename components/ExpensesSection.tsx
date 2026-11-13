@@ -9,6 +9,7 @@ import { ReceiptViewer } from "@/components/expenses/Receipt";
 import { Expense, Participant } from "@/lib/types";
 import { errorMessage } from "@/lib/errors";
 import { RECEIPT_NOT_REMOVED, removeReceipts, uploadReceipt } from "@/lib/receipts";
+import { shortDate } from "@/lib/dates";
 import {
   CATEGORY_INFO,
   type Transfer,
@@ -16,17 +17,24 @@ import {
   categoryOf,
   clp,
   computeTransfers,
+  expenseDate,
+  formatWhen,
+  inTrash,
+  personName,
   sharesOf,
   summarize,
 } from "@/lib/expenses";
 
 interface ExpensesSectionProps {
   tripId: string;
+  // Todos, también los de la papelera (se separan aquí)
   expenses: Expense[];
   participants: Participant[];
   // Nombre del participante cuyo email coincide con la sesión (null si no está en el equipo)
   myName: string | null;
   tripName: string;
+  // Solo el creador del viaje borra para siempre lo de la papelera
+  isCreator: boolean;
   onRefresh: () => void;
 }
 
@@ -47,6 +55,7 @@ export default function ExpensesSection({
   participants = [],
   myName,
   tripName,
+  isCreator,
   onRefresh,
 }: ExpensesSectionProps) {
   const [saving, setSaving] = useState(false);
@@ -59,16 +68,24 @@ export default function ExpensesSection({
   const [sharing, setSharing] = useState(false);
   const [copied, setCopied] = useState(false);
   const [viewingReceipt, setViewingReceipt] = useState<Expense | null>(null);
+  const [showTrash, setShowTrash] = useState(false);
+  const [busyId, setBusyId] = useState<string | null>(null); // gasto que se está mandando o sacando de la papelera
 
-  const safeExpenses = expenses.map((e) => ({
+  const allExpenses = expenses.map((e) => ({
     ...e,
     split_between: Array.isArray(e.split_between) ? e.split_between : [],
     amount: Number(e.amount) || 0,
   }));
-  const realExpenses = safeExpenses
-    .filter((e) => !e.is_settlement)
-    .sort((a, b) => Number(b.id) - Number(a.id));
-  const settlements = safeExpenses.filter((e) => e.is_settlement).sort((a, b) => Number(b.id) - Number(a.id));
+  // Lo de la papelera no cuenta en nada: solo se lista abajo para restaurarlo
+  const safeExpenses = allExpenses.filter((e) => !inTrash(e));
+  const trash = allExpenses
+    .filter(inTrash)
+    .sort((a, b) => (b.deleted_at ?? "").localeCompare(a.deleted_at ?? ""));
+  // Los más recientes primero, por la fecha del gasto
+  const byDate = (a: Expense, b: Expense) =>
+    expenseDate(b).localeCompare(expenseDate(a)) || Number(b.id) - Number(a.id);
+  const realExpenses = safeExpenses.filter((e) => !e.is_settlement).sort(byDate);
+  const settlements = safeExpenses.filter((e) => e.is_settlement).sort(byDate);
 
   const people = summarize(participants, safeExpenses);
   const transfers = computeTransfers(people);
@@ -106,6 +123,7 @@ export default function ExpensesSection({
     split_mode: d.split_mode,
     split_values: d.split_values,
     category: d.category,
+    expense_date: d.expense_date,
   });
 
   // La foto se sube primero; si después falla el guardado, se borra para no dejarla suelta
@@ -140,7 +158,7 @@ export default function ExpensesSection({
         .eq("id", exp.id)
         .select("id");
       if (error) throw error;
-      if (!data || data.length === 0) throw new Error("el gasto ya no existe (alguien lo borró).");
+      if (!data || data.length === 0) throw new Error("alguien mandó este gasto a la papelera o lo borró.");
       setEditing(null);
       onRefresh();
       // La foto anterior ya no se usa
@@ -155,16 +173,47 @@ export default function ExpensesSection({
     }
   };
 
-  const handleDeleteExpense = async (exp: Expense) => {
-    if (!confirm(`¿Eliminar "${exp.description}"?`)) return;
+  // ---------- Papelera ----------
+
+  // Borrar un gasto o deshacer un pago lo manda a la papelera (con su foto), no lo borra
+  const moveToTrash = async (exp: Expense, question: string, errorPrefix: string) => {
+    if (!confirm(question)) return;
+    setBusyId(String(exp.id));
+    const { error } = await supabase.rpc("mandar_gasto_a_papelera", { p_gasto: exp.id });
+    setBusyId(null);
+    if (error) alert(errorPrefix + errorMessage(error));
+    onRefresh();
+  };
+
+  const handleDeleteExpense = (exp: Expense) =>
+    moveToTrash(
+      exp,
+      `¿Mandar "${exp.description}" a la papelera?\n\nDeja de contar en las cuentas. Cualquiera del viaje lo puede restaurar desde la papelera.`,
+      "No se pudo mandar el gasto a la papelera: "
+    );
+
+  const handleRestore = async (exp: Expense) => {
+    setBusyId(String(exp.id));
+    const { error } = await supabase.rpc("restaurar_gasto", { p_gasto: exp.id });
+    setBusyId(null);
+    if (error) alert("No se pudo restaurar: " + errorMessage(error));
+    onRefresh();
+  };
+
+  const handleDeleteForever = async (exp: Expense) => {
+    const what = exp.is_settlement ? exp.description : `"${exp.description}"`;
+    if (!confirm(`¿Borrar ${what} para siempre?${exp.receipt_path ? " También se borra la foto de la boleta." : ""}\n\nEsto no se puede deshacer.`))
+      return;
+    setBusyId(String(exp.id));
     const { data, error } = await supabase.from("expenses").delete().eq("id", exp.id).select("id");
+    setBusyId(null);
     if (error || !data || data.length === 0) {
-      alert("Error eliminando gasto: " + (error?.message ?? "ya no estaba o no tienes permiso."));
+      alert("No se pudo borrar: " + (error?.message ?? "alguien lo restauró, ya no estaba o no tienes permiso."));
       onRefresh();
       return;
     }
     onRefresh();
-    if (!(await removeReceipts([exp.receipt_path]))) alert("El gasto se eliminó. " + RECEIPT_NOT_REMOVED);
+    if (!(await removeReceipts([exp.receipt_path]))) alert("Se borró. " + RECEIPT_NOT_REMOVED);
   };
 
   // ---------- Pagos ----------
@@ -217,14 +266,12 @@ export default function ExpensesSection({
     }
   };
 
-  const handleUndoSettlement = async (exp: Expense) => {
-    if (!confirm(`¿Deshacer "${exp.description}" por ${clp(exp.amount)}? La deuda volverá a aparecer.`)) return;
-    const { data, error } = await supabase.from("expenses").delete().eq("id", exp.id).select("id");
-    if (error || !data || data.length === 0) {
-      alert("Error deshaciendo el pago: " + (error?.message ?? "ya no estaba o no tienes permiso."));
-    }
-    onRefresh();
-  };
+  const handleUndoSettlement = (exp: Expense) =>
+    moveToTrash(
+      exp,
+      `¿Deshacer "${exp.description}" por ${clp(exp.amount)}?\n\nLa deuda volverá a aparecer. El pago queda en la papelera por si fue un error.`,
+      "No se pudo deshacer el pago: "
+    );
 
   // Formulario de pago (en línea, bajo la deuda o bajo "Registrar otro pago")
   const paymentForm = (fixed: boolean) =>
@@ -500,7 +547,9 @@ export default function ExpensesSection({
                         Pagó {exp.paid_by === myName ? "tú" : exp.paid_by}
                       </span>
                     </div>
-                    <div className="text-[11px] text-slate-400 mt-1">{splitSummary(exp)}</div>
+                    <div className="text-[11px] text-slate-400 mt-1">
+                      <span className="text-slate-300">{shortDate(expenseDate(exp))}</span> · {splitSummary(exp)}
+                    </div>
                   </div>
                 </div>
 
@@ -525,10 +574,11 @@ export default function ExpensesSection({
                   </button>
                   <button
                     onClick={() => handleDeleteExpense(exp)}
-                    className="text-slate-500 hover:text-rose-400 text-xs px-1"
-                    title="Eliminar gasto"
+                    disabled={busyId === String(exp.id)}
+                    className="text-slate-500 hover:text-rose-400 text-xs px-1 disabled:opacity-40"
+                    title="Mandar a la papelera"
                   >
-                    ✕
+                    {busyId === String(exp.id) ? "…" : "✕"}
                   </button>
                 </div>
               </div>
@@ -548,15 +598,21 @@ export default function ExpensesSection({
               <span className="text-slate-300 min-w-0">
                 ✓ <span className="text-slate-200 font-medium">{exp.paid_by}</span> le pagó a{" "}
                 <span className="text-slate-200 font-medium">{exp.split_between[0]}</span>
+                <span className="block text-[11px] text-slate-500">
+                  {shortDate(expenseDate(exp))}
+                  {exp.created_by_name &&
+                    ` · registrado por ${personName(participants, exp.created_by, exp.created_by_name)}`}
+                </span>
               </span>
               <div className="flex items-center gap-3 shrink-0">
                 <span className="font-mono font-semibold text-emerald-500">{clp(exp.amount)}</span>
                 <button
                   onClick={() => handleUndoSettlement(exp)}
-                  className="text-[10px] text-slate-500 hover:text-rose-400"
+                  disabled={busyId === String(exp.id)}
+                  className="text-[10px] text-slate-500 hover:text-rose-400 disabled:opacity-40"
                   title="Deshacer este pago"
                 >
-                  Deshacer
+                  {busyId === String(exp.id) ? "…" : "Deshacer"}
                 </button>
               </div>
             </div>
@@ -577,6 +633,79 @@ export default function ExpensesSection({
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <CategoryChart expenses={realExpenses} />
               <PeopleChart people={people} myName={myName} />
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Papelera: gastos borrados y pagos deshechos. No cuentan en nada hasta que se restauran. */}
+      {trash.length > 0 && (
+        <div className="space-y-2">
+          <button
+            onClick={() => setShowTrash(!showTrash)}
+            className="w-full text-xs font-semibold py-2.5 rounded-xl border border-slate-800 bg-slate-950/60 text-slate-400 hover:border-slate-600 hover:text-white transition-colors"
+          >
+            {showTrash ? "Ocultar papelera" : `🗑️ Papelera (${trash.length})`}
+          </button>
+          {showTrash && (
+            <div className="space-y-2">
+              <p className="text-[11px] text-slate-500">
+                Lo que está aquí no cuenta en el total ni en las deudas. Cualquiera del viaje lo puede restaurar
+                {isCreator ? "; solo tú, como creador del viaje, puedes borrarlo para siempre." : "; solo el creador del viaje puede borrarlo para siempre."}
+              </p>
+              {trash.map((exp) => {
+                const busy = busyId === String(exp.id);
+                return (
+                  <div
+                    key={exp.id}
+                    className="bg-slate-900/30 border border-slate-800 border-dashed px-3.5 py-2.5 rounded-xl text-xs space-y-2"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-slate-300 font-medium">
+                          {exp.is_settlement ? `↩︎ ${exp.description} (pago deshecho)` : exp.description}
+                        </p>
+                        <p className="text-[11px] text-slate-500 mt-0.5">
+                          {shortDate(expenseDate(exp))} · Borrado por{" "}
+                          <span className="text-slate-300">
+                            {personName(participants, exp.deleted_by, exp.deleted_by_name)}
+                          </span>{" "}
+                          el {formatWhen(exp.deleted_at!)}
+                        </p>
+                      </div>
+                      <span className="font-mono text-slate-400 line-through shrink-0">{clp(exp.amount)}</span>
+                    </div>
+                    <div className="flex items-center justify-end gap-2">
+                      {exp.receipt_path && (
+                        <button
+                          onClick={() => setViewingReceipt(exp)}
+                          className="text-sm leading-none px-1 opacity-80 hover:opacity-100"
+                          title="Ver la boleta"
+                          aria-label={`Ver la boleta de ${exp.description}`}
+                        >
+                          🧾
+                        </button>
+                      )}
+                      {isCreator && (
+                        <button
+                          onClick={() => handleDeleteForever(exp)}
+                          disabled={busy}
+                          className="text-[11px] text-slate-500 hover:text-rose-400 px-2 py-1 disabled:opacity-40"
+                        >
+                          Borrar para siempre
+                        </button>
+                      )}
+                      <button
+                        onClick={() => handleRestore(exp)}
+                        disabled={busy}
+                        className="text-[11px] font-semibold bg-slate-800 hover:bg-emerald-700 text-slate-200 hover:text-white px-3 py-1 rounded-md transition-colors disabled:opacity-40"
+                      >
+                        {busy ? "…" : "↺ Restaurar"}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>

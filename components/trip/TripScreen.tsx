@@ -297,6 +297,7 @@ export default function TripScreen({ tripId }: { tripId: string }) {
               participants={participants}
               myName={myName}
               tripName={trip.name}
+              isCreator={isCreator}
               onRefresh={fetchDetails}
             />
           )}
