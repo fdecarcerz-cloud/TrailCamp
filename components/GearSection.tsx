@@ -45,7 +45,7 @@ export default function GearSection({
   const [suggesting, setSuggesting] = useState(false);
   const [name, setName] = useState("");
   const [priority, setPriority] = useState<GearItem["priority"]>("Importante");
-  const [quantity, setQuantity] = useState<number>(1);
+  const [quantity, setQuantity] = useState("1"); // texto, para poder borrar y escribir otro
   const [assignedTo, setAssignedTo] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -53,7 +53,7 @@ export default function GearSection({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [editPriority, setEditPriority] = useState<GearItem["priority"]>("Importante");
-  const [editQuantity, setEditQuantity] = useState(1);
+  const [editQuantity, setEditQuantity] = useState("1");
   const [editAssignedTo, setEditAssignedTo] = useState("");
   const [savingEdit, setSavingEdit] = useState(false);
 
@@ -77,7 +77,7 @@ export default function GearSection({
       if (error) throw error;
 
       setName("");
-      setQuantity(1);
+      setQuantity("1");
       setAssignedTo("");
       onRefresh();
     } catch (err) {
@@ -91,7 +91,7 @@ export default function GearSection({
     setEditingId(item.id);
     setEditName(item.name ?? "");
     setEditPriority(item.priority ?? "Importante");
-    setEditQuantity(item.quantity ?? 1);
+    setEditQuantity(String(item.quantity ?? 1));
     setEditAssignedTo(item.assigned_to ?? "");
   };
 
@@ -275,7 +275,8 @@ export default function GearSection({
               type="number"
               min={1}
               value={quantity}
-              onChange={(e) => setQuantity(Number(e.target.value))}
+              inputMode="numeric"
+              onChange={(e) => setQuantity(e.target.value)}
               className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
             />
           </div>
@@ -358,7 +359,8 @@ export default function GearSection({
                         type="number"
                         min={1}
                         value={editQuantity}
-                        onChange={(e) => setEditQuantity(Number(e.target.value))}
+                        inputMode="numeric"
+                        onChange={(e) => setEditQuantity(e.target.value)}
                         className="w-full bg-slate-950 border border-slate-700 rounded-md px-2 py-1 text-white"
                       />
                     </div>

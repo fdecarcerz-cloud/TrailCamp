@@ -2,8 +2,9 @@
 
 import { useEffect, type ReactNode } from "react";
 
-// Ventana encima de todo para formularios (en el celular sube desde abajo). Tocar fuera no
-// la cierra, para no perder lo escrito: se cierra con ✕ o con el botón del formulario.
+// Ventana encima de todo para formularios. En el celular va arriba de la pantalla, para que
+// el teclado (que sale desde abajo) no tape las casillas. Tocar fuera no la cierra, para no
+// perder lo escrito: se cierra con ✕ o con el botón del formulario.
 export default function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
   // Que la página de atrás no se mueva mientras la ventana está abierta
   useEffect(() => {
@@ -15,12 +16,12 @@ export default function Modal({ title, onClose, children }: { title: string; onC
   }, []);
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-end sm:items-center justify-center sm:p-4">
+    <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-start sm:items-center justify-center px-2 pt-[calc(env(safe-area-inset-top,0px)+0.5rem)] sm:p-4">
       <div
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className="bg-slate-900 border border-slate-700 rounded-t-2xl sm:rounded-2xl w-full max-w-lg max-h-[92dvh] overflow-y-auto shadow-2xl"
+        className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-lg max-h-[90dvh] overflow-y-auto overscroll-contain shadow-2xl"
       >
         <div className="sticky top-0 z-10 bg-slate-900 flex items-center justify-between gap-3 px-5 pt-5 pb-3 border-b border-slate-800">
           <h3 className="text-base font-bold text-white truncate">{title}</h3>
@@ -28,7 +29,7 @@ export default function Modal({ title, onClose, children }: { title: string; onC
             ✕
           </button>
         </div>
-        <div className="p-5 pb-[calc(env(safe-area-inset-bottom,0px)+1.25rem)]">{children}</div>
+        <div className="p-5">{children}</div>
       </div>
     </div>
   );

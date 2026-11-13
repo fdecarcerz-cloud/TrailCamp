@@ -49,7 +49,7 @@ export default function CarpoolSection({
   const [carLabel, setCarLabel] = useState("");
   const [departureLocation, setDepartureLocation] = useState("");
   const [departureTime, setDepartureTime] = useState("");
-  const [seatsAvailable, setSeatsAvailable] = useState<number>(3);
+  const [seatsAvailable, setSeatsAvailable] = useState("3"); // texto, para poder borrar y escribir otro
   const [loading, setLoading] = useState(false);
 
   // Auto que se edita en la ventana emergente (copia de cuando se abrió)
@@ -58,7 +58,7 @@ export default function CarpoolSection({
   const [editCarLabel, setEditCarLabel] = useState("");
   const [editDepartureLocation, setEditDepartureLocation] = useState("");
   const [editDepartureTime, setEditDepartureTime] = useState("");
-  const [editSeatsAvailable, setEditSeatsAvailable] = useState<number>(3);
+  const [editSeatsAvailable, setEditSeatsAvailable] = useState("3");
   const [savingEdit, setSavingEdit] = useState(false);
 
   // Subir o bajar a alguien: "auto:nombre" mientras se guarda, para no tocar dos veces
@@ -96,7 +96,7 @@ export default function CarpoolSection({
       setCarLabel("");
       setDepartureLocation("");
       setDepartureTime("");
-      setSeatsAvailable(3);
+      setSeatsAvailable("3");
       onRefresh();
     } catch (err) {
       failed("No se pudo agregar el auto", err);
@@ -111,7 +111,7 @@ export default function CarpoolSection({
     setEditCarLabel(car.car ?? "");
     setEditDepartureLocation(car.departure_location ?? "");
     setEditDepartureTime(toTimeInput(car.departure_time));
-    setEditSeatsAvailable(Number(car.seats_available) || 3);
+    setEditSeatsAvailable(String(Number(car.seats_available) || 3));
   };
 
   const handleUpdateCarpool = async (car: Carpool) => {
@@ -285,7 +285,8 @@ export default function CarpoolSection({
               min={1}
               max={9}
               value={seatsAvailable}
-              onChange={(e) => setSeatsAvailable(Number(e.target.value))}
+              inputMode="numeric"
+              onChange={(e) => setSeatsAvailable(e.target.value)}
               className={inputClass}
             />
           </div>
@@ -356,7 +357,8 @@ export default function CarpoolSection({
                     min={1}
                     max={9}
                     value={editSeatsAvailable}
-                    onChange={(e) => setEditSeatsAvailable(Number(e.target.value))}
+                    inputMode="numeric"
+                    onChange={(e) => setEditSeatsAvailable(e.target.value)}
                     className={modalInput}
                   />
                 </div>
