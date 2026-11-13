@@ -1,5 +1,5 @@
 -- Copia completa de la estructura de la base de datos de Supabase (schema public).
--- Foto tomada el 2026-11-13, después de aplicar migrations/20261113130000_autos_solo_por_funciones.sql.
+-- Foto tomada el 2026-11-13, después de aplicar migrations/20261113150000_gastos_papelera_cerrar.sql.
 -- Incluye al final el bucket de Storage "boletas" y sus políticas.
 -- Sirve para recrear la base de datos desde cero en un proyecto vacío (SQL Editor -> pegar -> Run).
 -- No contiene datos (viajes, gastos, etc.), solo la estructura.
@@ -33,7 +33,16 @@ create table if not exists public.expenses (
   split_mode text default 'igual'::text not null,
   split_values numeric[],
   category text,
-  receipt_path text
+  receipt_path text,
+  expense_date date default ((now() AT TIME ZONE 'America/Santiago'::text))::date,
+  created_by uuid,
+  created_by_name text,
+  updated_at timestamp with time zone,
+  updated_by uuid,
+  updated_by_name text,
+  deleted_at timestamp with time zone,
+  deleted_by uuid,
+  deleted_by_name text
 );
 
 create table if not exists public.gear (
@@ -97,6 +106,12 @@ alter table expenses add constraint expenses_split_mode_valido CHECK ((split_mod
 alter table expenses add constraint expenses_split_values_alineado CHECK (((split_values IS NULL) OR (cardinality(split_values) = cardinality(split_between))));
 
 alter table expenses add constraint expenses_trip_id_fkey FOREIGN KEY (trip_id) REFERENCES trips(id) ON DELETE CASCADE;
+
+alter table expenses add constraint expenses_created_by_fkey FOREIGN KEY (created_by) REFERENCES auth.users(id) ON DELETE SET NULL;
+
+alter table expenses add constraint expenses_updated_by_fkey FOREIGN KEY (updated_by) REFERENCES auth.users(id) ON DELETE SET NULL;
+
+alter table expenses add constraint expenses_deleted_by_fkey FOREIGN KEY (deleted_by) REFERENCES auth.users(id) ON DELETE SET NULL;
 
 alter table gear add constraint gear_trip_id_fkey FOREIGN KEY (trip_id) REFERENCES trips(id) ON DELETE CASCADE;
 
@@ -165,16 +180,18 @@ end;
 $function$
 ;
 
-CREATE OR REPLACE FUNCTION public.borrar_participante(p_id bigint)
- RETURNS void
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO ''
-AS $function$
+create or replace function public.borrar_participante(p_id bigint)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
 declare
   v_nombre text;
   v_viaje bigint;
   v_gastos int;
+  v_papelera int;
+  v_texto text;
 begin
   select name, trip_id into v_nombre, v_viaje from public.participants where id = p_id;
   if not found then
@@ -184,13 +201,24 @@ begin
     raise exception 'Solo el creador del viaje puede borrar personas del equipo.';
   end if;
 
-  select count(*) into v_gastos from public.expenses
+  select count(*) filter (where deleted_at is null), count(*) filter (where deleted_at is not null)
+  into v_gastos, v_papelera
+  from public.expenses
   where trip_id = v_viaje and (paid_by = v_nombre or v_nombre = any(split_between));
 
   if v_gastos > 0 then
-    raise exception '% aparece en %. Edita o borra esos gastos primero, para que las cuentas no queden mal.',
+    v_texto := format('%s aparece en %s. Edita o borra esos gastos primero, para que las cuentas no queden mal.',
       v_nombre,
-      case when v_gastos = 1 then '1 gasto o pago' else v_gastos || ' gastos o pagos' end;
+      case when v_gastos = 1 then '1 gasto o pago' else v_gastos || ' gastos o pagos' end);
+    if v_papelera > 0 then
+      v_texto := v_texto || format(' También aparece en %s de la papelera.', v_papelera);
+    end if;
+    raise exception '%', v_texto;
+  end if;
+  if v_papelera > 0 then
+    raise exception '% aparece en % de la papelera. Bórralos definitivamente desde la papelera de Gastos primero.',
+      v_nombre,
+      case when v_papelera = 1 then '1 gasto o pago' else v_papelera || ' gastos o pagos' end;
   end if;
 
   if exists (select 1 from public.carpools where trip_id = v_viaje and driver_name = v_nombre) then
@@ -207,8 +235,7 @@ begin
 
   delete from public.participants where id = p_id;
 end;
-$function$
-;
+$$;
 
 create or replace function public.crear_viaje(
   p_tipo text,
@@ -704,6 +731,142 @@ AS $function$
 $function$
 ;
 
+create or replace function public.mi_nombre_en_viaje(p_viaje bigint)
+returns text
+language sql
+stable
+set search_path = ''
+as $$
+  select coalesce(
+    (select p.name from public.participants p
+     where p.trip_id = p_viaje
+       and (p.user_id = (select auth.uid())
+         or lower(p.email) = lower((select auth.jwt()) ->> 'email'))
+     order by (p.user_id = (select auth.uid())) desc nulls last
+     limit 1),
+    nullif(btrim((select auth.jwt()) -> 'user_metadata' ->> 'nombre'), ''),
+    nullif(btrim((select auth.jwt()) -> 'user_metadata' ->> 'full_name'), ''),
+    split_part((select auth.jwt()) ->> 'email', '@', 1)
+  );
+$$;
+
+create or replace function public.gasto_historial()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  if current_user <> 'authenticated' then
+    return new;
+  end if;
+
+  if tg_op = 'INSERT' then
+    new.created_at := now();
+    new.created_by := (select auth.uid());
+    new.created_by_name := public.mi_nombre_en_viaje(new.trip_id);
+    new.expense_date := coalesce(new.expense_date, (now() at time zone 'America/Santiago')::date);
+    new.updated_at := null;
+    new.updated_by := null;
+    new.updated_by_name := null;
+    new.deleted_at := null;
+    new.deleted_by := null;
+    new.deleted_by_name := null;
+    return new;
+  end if;
+
+  if old.deleted_at is not null then
+    raise exception 'Este gasto está en la papelera. Restáuralo antes de editarlo.';
+  end if;
+
+  -- Quién lo registró y la papelera no se cambian editando
+  new.created_at := old.created_at;
+  new.created_by := old.created_by;
+  new.created_by_name := old.created_by_name;
+  new.deleted_at := old.deleted_at;
+  new.deleted_by := old.deleted_by;
+  new.deleted_by_name := old.deleted_by_name;
+
+  if (new.trip_id, new.description, new.amount, new.paid_by, new.split_between, new.split_mode,
+      new.split_values, new.category, new.receipt_path, new.expense_date, new.is_settlement)
+     is distinct from
+     (old.trip_id, old.description, old.amount, old.paid_by, old.split_between, old.split_mode,
+      old.split_values, old.category, old.receipt_path, old.expense_date, old.is_settlement) then
+    new.updated_at := now();
+    new.updated_by := (select auth.uid());
+    new.updated_by_name := public.mi_nombre_en_viaje(new.trip_id);
+  else
+    new.updated_at := old.updated_at;
+    new.updated_by := old.updated_by;
+    new.updated_by_name := old.updated_by_name;
+  end if;
+  return new;
+end;
+$$;
+
+create or replace function public.mandar_gasto_a_papelera(p_gasto bigint)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v public.expenses%rowtype;
+begin
+  select * into v from public.expenses where id = p_gasto for update;
+  if not found or not public.puede_ver_viaje(v.trip_id) then
+    raise exception 'Este gasto ya no existe (alguien lo borró).';
+  end if;
+  if v.deleted_at is not null then
+    return; -- otra persona ya lo mandó a la papelera
+  end if;
+  update public.expenses
+  set deleted_at = now(),
+      deleted_by = (select auth.uid()),
+      deleted_by_name = public.mi_nombre_en_viaje(v.trip_id)
+  where id = p_gasto;
+end;
+$$;
+
+create or replace function public.restaurar_gasto(p_gasto bigint)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v public.expenses%rowtype;
+begin
+  select * into v from public.expenses where id = p_gasto for update;
+  if not found or not public.puede_ver_viaje(v.trip_id) then
+    raise exception 'Este gasto ya no existe (alguien lo borró definitivamente).';
+  end if;
+  if v.deleted_at is null then
+    return; -- otra persona ya lo restauró
+  end if;
+  update public.expenses
+  set deleted_at = null,
+      deleted_by = null,
+      deleted_by_name = null
+  where id = p_gasto;
+end;
+$$;
+
+create or replace function public.puede_borrar_boleta(ruta text)
+returns boolean
+language sql
+stable
+set search_path = ''
+as $$
+  select case
+    when public.puede_ver_boleta(ruta) then
+      public.es_creador_viaje(((storage.foldername(ruta))[1])::bigint)
+      or not exists (select 1 from public.expenses where receipt_path = ruta)
+    else false
+  end;
+$$;
+
+CREATE TRIGGER gasto_historial BEFORE INSERT OR UPDATE ON public.expenses FOR EACH ROW EXECUTE FUNCTION gasto_historial();
+
 CREATE TRIGGER participante_nuevo_seguro BEFORE INSERT ON public.participants FOR EACH ROW EXECUTE FUNCTION participante_nuevo_seguro();
 
 CREATE TRIGGER trg_limpiar_ubicacion_viaje BEFORE UPDATE ON public.trips FOR EACH ROW EXECUTE FUNCTION limpiar_ubicacion_viaje();
@@ -728,9 +891,18 @@ create policy "Borrar autos del viaje" on public.carpools as PERMISSIVE for DELE
 create policy "Ver autos del viaje" on public.carpools as PERMISSIVE for SELECT to authenticated
   using (puede_ver_viaje(trip_id));
 
-create policy "Acceso por viaje" on public.expenses as PERMISSIVE for ALL to authenticated
-  using (puede_ver_viaje(trip_id))
+create policy "Borrar para siempre (creador, desde la papelera)" on public.expenses as PERMISSIVE for DELETE to authenticated
+  using ((es_creador_viaje(trip_id) AND (deleted_at IS NOT NULL)));
+
+create policy "Editar gastos fuera de la papelera" on public.expenses as PERMISSIVE for UPDATE to authenticated
+  using ((puede_ver_viaje(trip_id) AND (deleted_at IS NULL)))
   with check (puede_ver_viaje(trip_id));
+
+create policy "Registrar gastos" on public.expenses as PERMISSIVE for INSERT to authenticated
+  with check (puede_ver_viaje(trip_id));
+
+create policy "Ver gastos del viaje" on public.expenses as PERMISSIVE for SELECT to authenticated
+  using (puede_ver_viaje(trip_id));
 
 create policy "Acceso por viaje" on public.gear as PERMISSIVE for ALL to authenticated
   using (puede_ver_viaje(trip_id))
@@ -793,6 +965,15 @@ revoke execute on function public.subir_al_auto(bigint, text) from public, anon;
 grant execute on function public.subir_al_auto(bigint, text) to authenticated;
 revoke execute on function public.bajar_del_auto(bigint, text) from public, anon;
 grant execute on function public.bajar_del_auto(bigint, text) to authenticated;
+revoke execute on function public.mi_nombre_en_viaje(bigint) from public, anon;
+grant execute on function public.mi_nombre_en_viaje(bigint) to authenticated;
+revoke execute on function public.gasto_historial() from public, anon, authenticated;
+revoke execute on function public.mandar_gasto_a_papelera(bigint) from public, anon;
+grant execute on function public.mandar_gasto_a_papelera(bigint) to authenticated;
+revoke execute on function public.restaurar_gasto(bigint) from public, anon;
+grant execute on function public.restaurar_gasto(bigint) to authenticated;
+revoke execute on function public.puede_borrar_boleta(text) from public, anon;
+grant execute on function public.puede_borrar_boleta(text) to authenticated;
 
 -- Realtime (migración 20261016150000)
 alter publication supabase_realtime
@@ -802,8 +983,9 @@ alter publication supabase_realtime
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values ('boletas', 'boletas', false, 5242880, array['image/jpeg', 'image/png', 'image/webp']);
 
+-- Borrar: la foto de un gasto (también en la papelera) solo el creador; una suelta, cualquiera del viaje
 create policy "Boletas: borrar" on storage.objects as PERMISSIVE for DELETE to authenticated
-  using (((bucket_id = 'boletas'::text) AND puede_ver_boleta(name)));
+  using (((bucket_id = 'boletas'::text) AND puede_borrar_boleta(name)));
 
 create policy "Boletas: subir" on storage.objects as PERMISSIVE for INSERT to authenticated
   with check (((bucket_id = 'boletas'::text) AND puede_ver_boleta(name)));
