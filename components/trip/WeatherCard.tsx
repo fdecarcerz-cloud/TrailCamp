@@ -32,11 +32,13 @@ interface WeatherCardProps {
   onPlaceSaved: () => void;
 }
 
-type AutoPlace = { place: Place | null; failed: boolean };
+type Options = { places: Place[]; failed: boolean };
 type ForecastResult = { key: string; days?: DayForecast[]; stale?: boolean; failed?: boolean };
 
 // Pronóstico del viaje (Open-Meteo) con alertas y sugerencias para la lista de Material.
-// Si el viaje no tiene lugar guardado, se busca el destino y se guarda el primer resultado.
+// Si el viaje no tiene lugar guardado, se busca el destino y se muestran las opciones bajo
+// "¿Cuál es el lugar?". No se guarda nada ni se muestra clima hasta que alguien elige una:
+// con nombres repetidos (hay varios "Las Trancas") el primer resultado puede ser otro lugar.
 // TripScreen lo monta con key por destino, así que cambiar el destino lo reinicia.
 export default function WeatherCard({ trip, gear, people, onGearAdded, onPlaceSaved }: WeatherCardProps) {
   const win = forecastWindow(trip.start_date, trip.end_date);
@@ -46,39 +48,28 @@ export default function WeatherCard({ trip, gear, people, onGearAdded, onPlaceSa
       : null;
 
   const [picked, setPicked] = useState<Place | null>(null);
-  const [auto, setAuto] = useState<AutoPlace | null>(null); // null = buscando
+  const [options, setOptions] = useState<Options | null>(null); // null = buscando
   const [changing, setChanging] = useState(false);
   const [query, setQuery] = useState("");
   const [retry, setRetry] = useState(0);
   const [forecast, setForecast] = useState<ForecastResult | null>(null);
   const [adding, setAdding] = useState(false);
+  const [saving, setSaving] = useState(false);
 
-  const loc = picked ?? saved ?? auto?.place ?? null;
-  const needsAuto = !picked && !saved && win.kind !== "pasado";
+  const loc = picked ?? saved;
+  const needsOptions = !loc && win.kind !== "pasado";
 
-  // Buscar el destino escrito y guardar el primer lugar que aparece
+  // Buscar el destino escrito para ofrecer opciones (sin guardar ninguna)
   useEffect(() => {
-    if (!needsAuto || !trip.destination?.trim()) return;
+    if (!needsOptions || !trip.destination?.trim()) return;
     let cancelled = false;
     searchPlaces(trip.destination)
-      .then(async (found) => {
-        if (cancelled) return;
-        const place = found[0] ?? null;
-        setAuto({ place, failed: false });
-        if (!place) return;
-        try {
-          await saveTripPlace(trip.id, place);
-          onPlaceSaved();
-        } catch (err) {
-          // Igual se muestra el clima; se volverá a buscar la próxima vez
-          console.error("No se pudo guardar el lugar del viaje:", errorMessage(err));
-        }
-      })
-      .catch(() => !cancelled && setAuto({ place: null, failed: true }));
+      .then((places) => !cancelled && setOptions({ places, failed: false }))
+      .catch(() => !cancelled && setOptions({ places: [], failed: true }));
     return () => {
       cancelled = true;
     };
-  }, [needsAuto, trip.destination, trip.id, retry, onPlaceSaved]);
+  }, [needsOptions, trip.destination, retry]);
 
   // Descargar el pronóstico (o leerlo de la memoria de 3 horas)
   const lat = loc?.lat;
@@ -97,20 +88,24 @@ export default function WeatherCard({ trip, gear, people, onGearAdded, onPlaceSa
 
   if (win.kind === "pasado") return null;
 
+  // Se guarda primero y recién ahí se muestra el clima: así todo el equipo ve el mismo lugar
   const handlePick = async (place: Place) => {
-    setPicked(place);
-    setChanging(false);
-    setQuery("");
+    setSaving(true);
     try {
       await saveTripPlace(trip.id, place);
+      setPicked(place);
+      setChanging(false);
+      setQuery("");
       onPlaceSaved();
     } catch (err) {
-      alert("Se muestra el clima de ese lugar, pero no se pudo guardar en el viaje: " + errorMessage(err));
+      alert("No se pudo guardar el lugar: " + errorMessage(err));
+    } finally {
+      setSaving(false);
     }
   };
 
   const tryAgain = () => {
-    setAuto(null);
+    setOptions(null);
     setForecast(null);
     setRetry((n) => n + 1);
   };
@@ -149,7 +144,9 @@ export default function WeatherCard({ trip, gear, people, onGearAdded, onPlaceSa
   );
 
   let body: React.ReactNode;
-  if (changing) {
+  if (saving) {
+    body = <p className="text-slate-500 animate-pulse">Guardando el lugar...</p>;
+  } else if (changing) {
     body = (
       <div className="space-y-2">
         <PlaceSearch
@@ -166,17 +163,52 @@ export default function WeatherCard({ trip, gear, people, onGearAdded, onPlaceSa
       </div>
     );
   } else if (!loc) {
-    if (!trip.destination?.trim() || auto?.place === null) {
+    if (!trip.destination?.trim()) {
+      body = <p className="text-slate-400">Elige el lugar del viaje para ver el clima.</p>;
+    } else if (!options) {
+      body = <p className="text-slate-500 animate-pulse">Buscando el lugar...</p>;
+    } else if (options.failed) {
       body = (
         <p className="text-slate-400">
-          {auto?.failed
-            ? "No se pudo buscar el lugar. Revisa tu conexión a internet."
-            : `No encontramos "${trip.destination}" en el mapa. Elige el lugar para ver el clima.`}
-          {auto?.failed && retryButton}
+          No se pudo buscar el lugar. Revisa tu conexión a internet.
+          {retryButton}
+        </p>
+      );
+    } else if (options.places.length === 0) {
+      body = (
+        <p className="text-slate-400">
+          No encontramos &quot;{trip.destination}&quot; en el mapa. Toca &quot;Elegir lugar&quot; y busca el pueblo o
+          ciudad más cercana.
         </p>
       );
     } else {
-      body = <p className="text-slate-500 animate-pulse">Buscando el lugar...</p>;
+      body = (
+        <div className="space-y-2">
+          <p className="text-slate-300">
+            <span className="font-semibold text-white">¿Cuál es el lugar?</span> Elige uno para ver el clima. Se
+            guarda para todo el equipo.
+          </p>
+          <ul className="border border-slate-800 rounded-lg divide-y divide-slate-800 overflow-hidden">
+            {options.places.map((p) => (
+              <li key={p.label}>
+                <button
+                  onClick={() => handlePick(p)}
+                  className="w-full text-left px-3 py-2 bg-slate-900 hover:bg-slate-800 transition-colors"
+                >
+                  <span className="block text-slate-200">📍 {p.name}</span>
+                  {p.detail && <span className="block text-[11px] text-slate-500">{p.detail}</span>}
+                </button>
+              </li>
+            ))}
+          </ul>
+          <button
+            onClick={() => setChanging(true)}
+            className="text-[11px] text-slate-400 hover:text-white underline decoration-dotted"
+          >
+            No es ninguno: buscar otro
+          </button>
+        </div>
+      );
     }
   } else if (win.kind === "lejos") {
     body = (
@@ -269,7 +301,8 @@ export default function WeatherCard({ trip, gear, people, onGearAdded, onPlaceSa
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
         <h2 className="font-semibold text-slate-200">🌤️ Clima</h2>
         {loc && !changing && <span className="text-slate-500 truncate max-w-full">📍 {loc.label}</span>}
-        {!changing && (
+        {/* Con la lista de opciones a la vista, el "buscar otro" va debajo de ella */}
+        {!changing && !saving && !(!loc && options?.places.length) && (
           <button
             onClick={() => setChanging(true)}
             className="text-[11px] text-slate-400 hover:text-white underline decoration-dotted"
