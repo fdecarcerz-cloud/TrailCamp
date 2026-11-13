@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { supabase } from "@/lib/supabase";
 import AddFormToggle from "@/components/AddFormToggle";
-import DeletedWhileEditing from "@/components/DeletedWhileEditing";
+import Modal, { GoneNotice } from "@/components/Modal";
 import { Carpool, Participant } from "@/lib/types";
 import { errorMessage } from "@/lib/errors";
 
@@ -31,9 +31,12 @@ function toTimeInput(raw?: string): string {
 
 const inputClass =
   "w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-emerald-500";
-const editInputClass =
-  "w-full bg-slate-950 border border-slate-700 rounded-md px-2 py-1 text-white focus:outline-none focus:border-emerald-500";
+const modalInput =
+  "w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-emerald-500";
 
+// Los cambios pasan por funciones de la base (crear_auto, editar_auto, subir_al_auto,
+// bajar_del_auto) que validan las reglas y no se pisan si dos personas tocan a la vez:
+// una persona va en un solo auto, quien maneja no es pasajero y no se pasan los asientos.
 export default function CarpoolSection({
   tripId,
   carpools = [],
@@ -49,8 +52,8 @@ export default function CarpoolSection({
   const [seatsAvailable, setSeatsAvailable] = useState<number>(3);
   const [loading, setLoading] = useState(false);
 
-  // Estado de edición
-  const [editingId, setEditingId] = useState<string | null>(null);
+  // Auto que se edita en la ventana emergente (copia de cuando se abrió)
+  const [editing, setEditing] = useState<Carpool | null>(null);
   const [editDriverName, setEditDriverName] = useState("");
   const [editCarLabel, setEditCarLabel] = useState("");
   const [editDepartureLocation, setEditDepartureLocation] = useState("");
@@ -58,22 +61,17 @@ export default function CarpoolSection({
   const [editSeatsAvailable, setEditSeatsAvailable] = useState<number>(3);
   const [savingEdit, setSavingEdit] = useState(false);
 
+  // Subir o bajar a alguien: "auto:nombre" mientras se guarda, para no tocar dos veces
+  const [busy, setBusy] = useState<string | null>(null);
+
   const passengersOf = (car: Carpool) => (Array.isArray(car.passengers) ? car.passengers : []);
 
-  // Una persona va en un solo auto: al subirla (o hacerla conductora) se baja de los demás
-  const removeFromOtherCars = async (name: string, exceptCarId?: string) => {
-    const others = carpools.filter((c) => c.id !== exceptCarId && passengersOf(c).includes(name));
-    for (const c of others) {
-      const { error } = await supabase
-        .from("carpools")
-        .update({ passengers: passengersOf(c).filter((p) => p !== name) })
-        .eq("id", c.id);
-      if (error) throw error;
-    }
+  // Si la base rechaza el cambio (el auto se llenó, alguien lo borró...), se avisa y la
+  // pantalla vuelve a lo que de verdad quedó guardado
+  const failed = (prefix: string, err: unknown) => {
+    alert(`${prefix}: ${errorMessage(err)}`);
+    onRefresh();
   };
-
-  const drivesAnotherCar = (name: string, exceptCarId?: string) =>
-    carpools.some((c) => c.id !== exceptCarId && c.driver_name === name);
 
   const handleAddCarpool = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -81,26 +79,17 @@ export default function CarpoolSection({
       alert("Elige quién maneja.");
       return;
     }
-    if (drivesAnotherCar(driverName)) {
-      alert(`${driverName} ya maneja otro auto en este viaje.`);
-      return;
-    }
 
     setLoading(true);
     try {
-      await removeFromOtherCars(driverName);
-      const { error } = await supabase.from("carpools").insert([
-        {
-          trip_id: tripId,
-          driver_name: driverName,
-          car: carLabel.trim() || null,
-          departure_location: departureLocation.trim(),
-          departure_time: departureTime,
-          seats_available: Number(seatsAvailable) || 3,
-          passengers: [],
-        },
-      ]);
-
+      const { error } = await supabase.rpc("crear_auto", {
+        p_viaje: tripId,
+        p_conductor: driverName,
+        p_auto: carLabel,
+        p_salida: departureLocation,
+        p_hora: departureTime,
+        p_asientos: Number(seatsAvailable) || 0,
+      });
       if (error) throw error;
 
       setDriverName("");
@@ -110,14 +99,14 @@ export default function CarpoolSection({
       setSeatsAvailable(3);
       onRefresh();
     } catch (err) {
-      alert("Error agregando auto: " + errorMessage(err));
+      failed("No se pudo agregar el auto", err);
     } finally {
       setLoading(false);
     }
   };
 
   const startEditing = (car: Carpool) => {
-    setEditingId(car.id);
+    setEditing(car);
     setEditDriverName(car.driver_name ?? "");
     setEditCarLabel(car.car ?? "");
     setEditDepartureLocation(car.departure_location ?? "");
@@ -130,85 +119,59 @@ export default function CarpoolSection({
       alert("Elige quién maneja.");
       return;
     }
-    if (drivesAnotherCar(editDriverName, car.id)) {
-      alert(`${editDriverName} ya maneja otro auto en este viaje.`);
-      return;
-    }
-    const passengers = passengersOf(car).filter((p) => p !== editDriverName);
-    if (passengers.length > editSeatsAvailable) {
-      alert(`Este auto ya lleva ${passengers.length} pasajeros. Baja a alguien antes de reducir los asientos.`);
-      return;
-    }
-
     setSavingEdit(true);
     try {
-      await removeFromOtherCars(editDriverName, car.id);
-      const { error } = await supabase
-        .from("carpools")
-        .update({
-          driver_name: editDriverName,
-          car: editCarLabel.trim() || null,
-          departure_location: editDepartureLocation.trim(),
-          // Si la hora antigua no se pudo leer y no se eligió otra, se conserva la anterior
-          departure_time: editDepartureTime || car.departure_time || "",
-          seats_available: Number(editSeatsAvailable) || 3,
-          passengers,
-        })
-        .eq("id", car.id);
-
+      const { error } = await supabase.rpc("editar_auto", {
+        p_auto: car.id,
+        p_conductor: editDriverName,
+        p_etiqueta: editCarLabel,
+        p_salida: editDepartureLocation,
+        // Si la hora antigua no se pudo leer y no se eligió otra, se conserva la anterior
+        p_hora: editDepartureTime || car.departure_time || "",
+        p_asientos: Number(editSeatsAvailable) || 0,
+      });
       if (error) throw error;
-
-      setEditingId(null);
+      setEditing(null);
       onRefresh();
     } catch (err) {
-      alert("Error actualizando auto: " + errorMessage(err));
+      failed("No se pudo guardar el auto", err);
     } finally {
       setSavingEdit(false);
     }
   };
 
-  const handleTogglePassenger = async (car: Carpool, passengerName: string) => {
-    const current = passengersOf(car);
-    const isAlreadyPassenger = current.includes(passengerName);
-
-    if (!isAlreadyPassenger) {
-      if (car.driver_name === passengerName) return;
-      if (drivesAnotherCar(passengerName, car.id)) {
-        alert(`${passengerName} maneja otro auto, no puede ir de pasajero.`);
-        return;
-      }
-      if (current.length >= car.seats_available) {
-        alert("Este auto ya no tiene asientos libres.");
-        return;
-      }
+  const handleTogglePassenger = async (car: Carpool, name: string) => {
+    if (busy) return;
+    const getOff = passengersOf(car).includes(name);
+    // Lleno según lo que se ve: se avisa sin preguntar a la base (igual la base lo revisa)
+    if (!getOff && passengersOf(car).length >= car.seats_available) {
+      alert("Este auto ya no tiene asientos libres.");
+      return;
     }
-
+    setBusy(`${car.id}:${name}`);
     try {
-      if (!isAlreadyPassenger) await removeFromOtherCars(passengerName, car.id);
-      const { error } = await supabase
-        .from("carpools")
-        .update({
-          passengers: isAlreadyPassenger
-            ? current.filter((p) => p !== passengerName)
-            : [...current, passengerName],
-        })
-        .eq("id", car.id);
-
+      const { error } = await supabase.rpc(getOff ? "bajar_del_auto" : "subir_al_auto", {
+        p_auto: car.id,
+        p_nombre: name,
+      });
       if (error) throw error;
       onRefresh();
     } catch (err) {
-      alert("Error actualizando asientos: " + errorMessage(err));
+      failed(getOff ? `No se pudo bajar a ${name}` : `No se pudo subir a ${name}`, err);
+    } finally {
+      setBusy(null);
     }
   };
 
-  const handleDeleteCarpool = async (id: string) => {
+  const handleDeleteCarpool = async (car: Carpool) => {
     if (!confirm("¿Deseas eliminar este auto? Sus pasajeros quedarán sin auto.")) return;
     try {
-      const { error } = await supabase.from("carpools").delete().eq("id", id);
+      const { data, error } = await supabase.from("carpools").delete().eq("id", car.id).select("id");
       if (error) throw error;
+      if (!data || data.length === 0) throw new Error("ya no existía o no tienes permiso.");
       onRefresh();
     } catch (err) {
-      alert("Error eliminando auto: " + errorMessage(err));
+      failed("No se pudo eliminar el auto", err);
     }
   };
 
@@ -241,6 +204,9 @@ export default function CarpoolSection({
       )}
     </>
   );
+
+  // Lo que se ve del auto que se edita: el de la lista actual (pasajeros al día)
+  const editingNow = editing ? carpools.find((c) => String(c.id) === String(editing.id)) : undefined;
 
   return (
     <div className="space-y-6">
@@ -334,8 +300,91 @@ export default function CarpoolSection({
         </form>
       </AddFormToggle>
 
-      {editingId !== null && !carpools.some((c) => String(c.id) === String(editingId)) && (
-        <DeletedWhileEditing what="el auto" onClose={() => setEditingId(null)} />
+      {editing && (
+        <Modal title="✎ Editar auto" onClose={() => setEditing(null)}>
+          {!editingNow ? (
+            <GoneNotice text="Otra persona borró este auto mientras lo editabas." onClose={() => setEditing(null)} />
+          ) : (
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleUpdateCarpool(editingNow);
+              }}
+              className="space-y-3 text-xs"
+            >
+              <div>
+                <label className="text-slate-400 block mb-1">¿Quién maneja?</label>
+                <select value={editDriverName} onChange={(e) => setEditDriverName(e.target.value)} className={modalInput}>
+                  {participantOptions(editingNow.driver_name)}
+                </select>
+              </div>
+              <div>
+                <label className="text-slate-400 block mb-1">Auto (opcional)</label>
+                <input
+                  type="text"
+                  value={editCarLabel}
+                  onChange={(e) => setEditCarLabel(e.target.value)}
+                  placeholder="Ej: Camioneta roja"
+                  className={modalInput}
+                />
+              </div>
+              <div>
+                <label className="text-slate-400 block mb-1">Punto de salida</label>
+                <input
+                  type="text"
+                  value={editDepartureLocation}
+                  onChange={(e) => setEditDepartureLocation(e.target.value)}
+                  placeholder="Ej: Metro Escuela Militar"
+                  className={modalInput}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-slate-400 block mb-1">Hora de salida</label>
+                  <input
+                    type="time"
+                    value={editDepartureTime}
+                    onChange={(e) => setEditDepartureTime(e.target.value)}
+                    onClick={(e) => e.currentTarget.showPicker?.()}
+                    className={`${modalInput} [color-scheme:dark]`}
+                  />
+                </div>
+                <div>
+                  <label className="text-slate-400 block mb-1">Asientos para pasajeros</label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={9}
+                    value={editSeatsAvailable}
+                    onChange={(e) => setEditSeatsAvailable(Number(e.target.value))}
+                    className={modalInput}
+                  />
+                </div>
+              </div>
+              {passengersOf(editingNow).length > 0 && (
+                <p className="text-[11px] text-slate-400">
+                  Pasajeros ahora ({passengersOf(editingNow).length}): {passengersOf(editingNow).join(", ")}.
+                </p>
+              )}
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setEditing(null)}
+                  className="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 font-semibold"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingEdit}
+                  className="px-4 py-2 rounded-lg bg-emerald-600 text-white font-semibold hover:bg-emerald-500 disabled:opacity-50"
+                >
+                  {savingEdit ? "Guardando..." : "Guardar cambios"}
+                </button>
+              </div>
+            </form>
+          )}
+        </Modal>
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -347,182 +396,109 @@ export default function CarpoolSection({
           carpools.map((car) => {
             const passengers = passengersOf(car);
             const isFull = passengers.length >= car.seats_available;
-            const isEditing = editingId === car.id;
             const iAmIn = !!myName && passengers.includes(myName);
 
             return (
               <div key={car.id} className="bg-slate-900/60 border border-slate-800 p-4 rounded-xl space-y-3">
-                {isEditing ? (
-                  <div className="space-y-3 text-xs">
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <label className="text-slate-400 block mb-0.5">¿Quién maneja?</label>
-                        <select
-                          value={editDriverName}
-                          onChange={(e) => setEditDriverName(e.target.value)}
-                          className={editInputClass}
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <h4 className="font-semibold text-sm text-white">
+                      🚗 {car.driver_name || "Sin conductor"}
+                      {car.car && <span className="text-slate-400 font-normal"> · {car.car}</span>}
+                    </h4>
+                    <p className="text-[11px] text-slate-400">
+                      📍 {car.departure_location || "Sin lugar fijado"} • ⏰ {car.departure_time || "Por definir"}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span
+                      className={`text-[10px] px-2 py-0.5 rounded-full font-mono border whitespace-nowrap ${
+                        isFull
+                          ? "bg-rose-950/60 text-rose-400 border-rose-800"
+                          : "bg-emerald-950/60 text-emerald-400 border-emerald-800"
+                      }`}
+                    >
+                      {passengers.length}/{car.seats_available} asientos
+                    </span>
+                    <button
+                      onClick={() => startEditing(car)}
+                      className="text-slate-400 hover:text-slate-200 text-xs px-1"
+                      title="Editar auto"
+                    >
+                      ✎
+                    </button>
+                    <button
+                      onClick={() => handleDeleteCarpool(car)}
+                      className="text-slate-500 hover:text-rose-400 text-xs px-1"
+                      title="Eliminar auto"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <p className="text-[11px] font-medium text-slate-400 mb-1.5">Pasajeros:</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {passengers.length > 0 ? (
+                      passengers.map((p) => (
+                        <span
+                          key={p}
+                          className="bg-slate-800 text-slate-300 text-[10px] px-2 py-0.5 rounded-md border border-slate-700"
                         >
-                          {participantOptions(car.driver_name)}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="text-slate-400 block mb-0.5">Auto</label>
-                        <input
-                          type="text"
-                          value={editCarLabel}
-                          onChange={(e) => setEditCarLabel(e.target.value)}
-                          placeholder="Ej: Camioneta roja"
-                          className={editInputClass}
-                        />
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-3 gap-2">
-                      <div>
-                        <label className="text-slate-400 block mb-0.5">Punto salida</label>
-                        <input
-                          type="text"
-                          value={editDepartureLocation}
-                          onChange={(e) => setEditDepartureLocation(e.target.value)}
-                          className={editInputClass}
-                        />
-                      </div>
-                      <div>
-                        <label className="text-slate-400 block mb-0.5">Hora salida</label>
-                        <input
-                          type="time"
-                          value={editDepartureTime}
-                          onChange={(e) => setEditDepartureTime(e.target.value)}
-                          onClick={(e) => e.currentTarget.showPicker?.()}
-                          className={`${editInputClass} [color-scheme:dark]`}
-                        />
-                      </div>
-                      <div>
-                        <label className="text-slate-400 block mb-0.5">Asientos</label>
-                        <input
-                          type="number"
-                          min={passengers.length || 1}
-                          max={9}
-                          value={editSeatsAvailable}
-                          onChange={(e) => setEditSeatsAvailable(Number(e.target.value))}
-                          className={editInputClass}
-                        />
-                      </div>
-                    </div>
-                    <div className="flex justify-end gap-2 pt-1">
-                      <button
-                        type="button"
-                        onClick={() => setEditingId(null)}
-                        className="px-2.5 py-1 rounded bg-slate-800 text-slate-300 hover:bg-slate-700"
-                      >
-                        Cancelar
-                      </button>
-                      <button
-                        type="button"
-                        disabled={savingEdit}
-                        onClick={() => handleUpdateCarpool(car)}
-                        className="px-2.5 py-1 rounded bg-emerald-600 text-white font-medium hover:bg-emerald-500"
-                      >
-                        {savingEdit ? "Guardando..." : "Guardar"}
-                      </button>
+                          {p === myName ? `${p} (tú)` : p}
+                        </span>
+                      ))
+                    ) : (
+                      <span className="text-[10px] text-slate-600 italic">Nadie todavía</span>
+                    )}
+                  </div>
+                </div>
+
+                {myName && !driverNames.has(myName) && (iAmIn || !isFull) && (
+                  <button
+                    onClick={() => handleTogglePassenger(car, myName)}
+                    disabled={!!busy}
+                    className={`w-full text-xs font-semibold py-2 rounded-lg border transition-colors disabled:opacity-60 ${
+                      iAmIn
+                        ? "bg-slate-900 border-slate-700 text-slate-300 hover:border-rose-700 hover:text-rose-300"
+                        : "bg-emerald-600 border-emerald-500 text-white hover:bg-emerald-500"
+                    }`}
+                  >
+                    {busy === `${car.id}:${myName}`
+                      ? "Guardando..."
+                      : iAmIn
+                        ? "Me bajo de este auto"
+                        : "🙋 Me subo a este auto"}
+                  </button>
+                )}
+
+                {participants.length > 0 && (
+                  <div className="pt-2 border-t border-slate-800/80">
+                    <p className="text-[10px] text-slate-500 mb-1">Subir / bajar a alguien:</p>
+                    <div className="flex flex-wrap gap-1">
+                      {participants
+                        .filter((pt) => !driverNames.has(pt.name))
+                        .map((pt) => {
+                          const inThisCar = passengers.includes(pt.name);
+                          return (
+                            <button
+                              key={pt.id}
+                              type="button"
+                              disabled={!!busy}
+                              onClick={() => handleTogglePassenger(car, pt.name)}
+                              className={`text-[10px] px-2 py-0.5 rounded border transition-colors disabled:opacity-60 ${
+                                inThisCar
+                                  ? "bg-emerald-900/60 border-emerald-700 text-emerald-300"
+                                  : "bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700"
+                              }`}
+                            >
+                              {busy === `${car.id}:${pt.name}` ? "…" : inThisCar ? `✓ ${pt.name}` : `+ ${pt.name}`}
+                            </button>
+                          );
+                        })}
                     </div>
                   </div>
-                ) : (
-                  <>
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <h4 className="font-semibold text-sm text-white">
-                          🚗 {car.driver_name || "Sin conductor"}
-                          {car.car && <span className="text-slate-400 font-normal"> · {car.car}</span>}
-                        </h4>
-                        <p className="text-[11px] text-slate-400">
-                          📍 {car.departure_location || "Sin lugar fijado"} • ⏰ {car.departure_time || "Por definir"}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2 shrink-0">
-                        <span
-                          className={`text-[10px] px-2 py-0.5 rounded-full font-mono border whitespace-nowrap ${
-                            isFull
-                              ? "bg-rose-950/60 text-rose-400 border-rose-800"
-                              : "bg-emerald-950/60 text-emerald-400 border-emerald-800"
-                          }`}
-                        >
-                          {passengers.length}/{car.seats_available} asientos
-                        </span>
-                        <button
-                          onClick={() => startEditing(car)}
-                          className="text-slate-400 hover:text-slate-200 text-xs px-1"
-                          title="Editar auto"
-                        >
-                          ✎
-                        </button>
-                        <button
-                          onClick={() => handleDeleteCarpool(car.id)}
-                          className="text-slate-500 hover:text-rose-400 text-xs px-1"
-                          title="Eliminar auto"
-                        >
-                          ✕
-                        </button>
-                      </div>
-                    </div>
-
-                    <div>
-                      <p className="text-[11px] font-medium text-slate-400 mb-1.5">Pasajeros:</p>
-                      <div className="flex flex-wrap gap-1.5">
-                        {passengers.length > 0 ? (
-                          passengers.map((p) => (
-                            <span
-                              key={p}
-                              className="bg-slate-800 text-slate-300 text-[10px] px-2 py-0.5 rounded-md border border-slate-700"
-                            >
-                              {p === myName ? `${p} (tú)` : p}
-                            </span>
-                          ))
-                        ) : (
-                          <span className="text-[10px] text-slate-600 italic">Nadie todavía</span>
-                        )}
-                      </div>
-                    </div>
-
-                    {myName && !driverNames.has(myName) && (iAmIn || !isFull) && (
-                      <button
-                        onClick={() => handleTogglePassenger(car, myName)}
-                        className={`w-full text-xs font-semibold py-2 rounded-lg border transition-colors ${
-                          iAmIn
-                            ? "bg-slate-900 border-slate-700 text-slate-300 hover:border-rose-700 hover:text-rose-300"
-                            : "bg-emerald-600 border-emerald-500 text-white hover:bg-emerald-500"
-                        }`}
-                      >
-                        {iAmIn ? "Me bajo de este auto" : "🙋 Me subo a este auto"}
-                      </button>
-                    )}
-
-                    {participants.length > 0 && (
-                      <div className="pt-2 border-t border-slate-800/80">
-                        <p className="text-[10px] text-slate-500 mb-1">Subir / bajar a alguien:</p>
-                        <div className="flex flex-wrap gap-1">
-                          {participants
-                            .filter((pt) => !driverNames.has(pt.name))
-                            .map((pt) => {
-                              const inThisCar = passengers.includes(pt.name);
-                              return (
-                                <button
-                                  key={pt.id}
-                                  type="button"
-                                  onClick={() => handleTogglePassenger(car, pt.name)}
-                                  className={`text-[10px] px-2 py-0.5 rounded border transition-colors ${
-                                    inThisCar
-                                      ? "bg-emerald-900/60 border-emerald-700 text-emerald-300"
-                                      : "bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700"
-                                  }`}
-                                >
-                                  {inThisCar ? `✓ ${pt.name}` : `+ ${pt.name}`}
-                                </button>
-                              );
-                            })}
-                        </div>
-                      </div>
-                    )}
-                  </>
                 )}
               </div>
             );
