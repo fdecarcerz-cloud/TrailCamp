@@ -146,11 +146,14 @@ export default function PrivacidadPage() {
           <section className="space-y-2">
             <h2 className="text-base font-semibold text-white">Tus derechos y contacto</h2>
             {/* REVISAR: si quieres, nombra la ley chilena de protección de datos (Ley 19.628, y la Ley 21.719
-                cuando entre en vigencia). También puedes poner aquí un correo de contacto fijo en vez de
-                "responder un correo de TrailCamp". */}
+                cuando entre en vigencia). */}
             <p>
               Puedes pedir ver, corregir o borrar tus datos. Casi todo lo puedes hacer tú mismo desde la app; para lo
-              demás, responde cualquier correo que te haya llegado de TrailCamp y te ayudaremos.
+              demás, o si tienes cualquier duda sobre tus datos, escríbenos a{" "}
+              <a href="mailto:trailcamp.app@gmail.com" className="text-emerald-400 hover:text-emerald-300 underline">
+                trailcamp.app@gmail.com
+              </a>
+              .
             </p>
             {/* REVISAR: confirma si quieres poner una edad mínima para usar la app (por ejemplo, 14 años). */}
           </section>
