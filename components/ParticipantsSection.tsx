@@ -15,8 +15,12 @@ const ROLES: Role[] = ["Participante", "Guía", "Organizador"];
 interface ParticipantsSectionProps {
   tripId: string;
   participants: Participant[];
-  // Solo el creador del viaje puede editar o borrar (lo exige también RLS en Supabase)
+  // El creador edita y saca a cualquiera (menos su propia tarjeta) y nombra organizadores.
+  // Un organizador edita y saca a los demás, pero no a otros organizadores ni al creador.
+  // Lo exigen también renombrar_participante y borrar_participante en la base.
   isCreator: boolean;
+  isOrganizer: boolean;
+  creatorUserId: string | null;
   // El creador y los organizadores ven el link de todos; los demás, solo el de quienes sumaron
   // (lo exige la función link_invitacion)
   seesAllLinks: boolean;
@@ -30,6 +34,10 @@ interface ParticipantsSectionProps {
   // Correo de la sesión, para "Soy yo" cuando la app no reconoce al usuario en el equipo
   myEmail: string | null;
   onRefresh: () => void;
+  // Después de traspasar el viaje (cambia quién es el creador)
+  onTripChanged: () => void;
+  // Después de salir del viaje (ya no se puede ver)
+  onLeftTrip: () => void;
 }
 
 const normalize = (s: string) => s.trim().toLowerCase();
@@ -47,6 +55,8 @@ export default function ParticipantsSection({
   tripId,
   participants,
   isCreator,
+  isOrganizer,
+  creatorUserId,
   seesAllLinks,
   userId,
   tripName,
@@ -55,7 +65,17 @@ export default function ParticipantsSection({
   myName,
   myEmail,
   onRefresh,
+  onTripChanged,
+  onLeftTrip,
 }: ParticipantsSectionProps) {
+  const thing = expenseGroup ? "grupo" : "viaje";
+  const isCreatorCard = (p: Participant) => !!creatorUserId && p.user_id === creatorUserId;
+  const canEdit = (p: Participant) =>
+    isCreator || (isOrganizer && (p.name === myName || (p.role !== "Organizador" && !isCreatorCard(p))));
+  // Nadie saca al creador; quien quiere irse usa "Salir del viaje"
+  const canRemove = (p: Participant) =>
+    p.name !== myName && !isCreatorCard(p) && (isCreator || (isOrganizer && p.role !== "Organizador"));
+
   // Invitación por persona: un link propio que une su cuenta (Google o correo) con su lugar.
   // El link se pide a la base al abrir la invitación, que revisa quién puede verlo.
   const [invite, setInvite] = useState<{ id: string; token: string } | null>(null);
@@ -269,6 +289,53 @@ export default function ParticipantsSection({
     }
   };
 
+  // Traspasar: solo a quien ya entró con su cuenta (la base lo exige)
+  const [transferOpen, setTransferOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const transferCandidates = participants.filter((p) => p.user_id && p.user_id !== userId);
+
+  const handleTransfer = async (p: Participant) => {
+    if (
+      !confirm(
+        `¿Traspasar "${tripName}" a ${p.name}?\n\n${p.name} pasará a ser quien creó el ${thing}: podrá borrarlo, traspasarlo y nombrar organizadores. Tú quedas como Organizador.`
+      )
+    ) {
+      return;
+    }
+    setBusy(true);
+    try {
+      const { error } = await supabase.rpc("traspasar_viaje", { p_viaje: tripId, p_participante: p.id });
+      if (error) throw error;
+      setTransferOpen(false);
+      onRefresh();
+      onTripChanged();
+    } catch (err) {
+      alert(`No se pudo traspasar el ${thing}: ` + errorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // Salir: la tarjeta queda con el nombre (para que las cuentas no cambien), sin la cuenta
+  const handleLeave = async () => {
+    if (
+      !confirm(
+        `¿Salir de "${tripName}"?\n\nDejarás de verlo en tu cuenta. Tu nombre (${myName}) queda en el equipo para que los gastos y las cuentas no cambien: si debes o te deben plata, conversa con el grupo antes.\n\nPara volver, alguien del equipo tendrá que mandarte una invitación nueva.`
+      )
+    ) {
+      return;
+    }
+    setBusy(true);
+    try {
+      const { error } = await supabase.rpc("salir_del_viaje", { p_viaje: tripId });
+      if (error) throw error;
+      onLeftTrip();
+    } catch (err) {
+      alert(`No se pudo salir del ${thing}: ` + errorMessage(err));
+      setBusy(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Formulario para sumar integrante */}
@@ -383,13 +450,22 @@ export default function ParticipantsSection({
               </div>
               <div>
                 <label className="text-slate-400 block mb-1">Rol</label>
-                <select value={editRole} onChange={(e) => setEditRole(e.target.value as Role)} className={modalInput}>
-                  {ROLES.map((r) => (
+                {/* El rol de Organizador lo da o lo quita solo el creador */}
+                <select
+                  value={editRole}
+                  onChange={(e) => setEditRole(e.target.value as Role)}
+                  disabled={!isCreator && editing.role === "Organizador"}
+                  className={`${modalInput} disabled:opacity-60`}
+                >
+                  {ROLES.filter((r) => isCreator || editing.role === "Organizador" || r !== "Organizador").map((r) => (
                     <option key={r} value={r}>
                       {r}
                     </option>
                   ))}
                 </select>
+                {!isCreator && editing.role === "Organizador" && (
+                  <p className="text-[11px] text-slate-500 mt-1">Solo quien creó el {thing} puede quitar el rol de Organizador.</p>
+                )}
               </div>
               {normalize(editName) !== normalize(editing.name) && (
                 <p className="text-[11px] text-amber-300">
@@ -453,22 +529,26 @@ export default function ParticipantsSection({
                     </button>
                   )}
                 </div>
-                {isCreator && (
+                {(canEdit(p) || canRemove(p)) && (
                   <div className="flex items-center gap-1 shrink-0">
-                    <button
-                      onClick={() => startEditing(p)}
-                      className="text-slate-400 hover:text-slate-200 text-xs px-1"
-                      title="Editar participante"
-                    >
-                      ✎
-                    </button>
-                    <button
-                      onClick={() => handleDeleteParticipant(p)}
-                      className="text-slate-500 hover:text-rose-400 text-xs px-1"
-                      title="Sacar del equipo"
-                    >
-                      ✕
-                    </button>
+                    {canEdit(p) && (
+                      <button
+                        onClick={() => startEditing(p)}
+                        className="text-slate-400 hover:text-slate-200 text-xs px-1"
+                        title="Editar participante"
+                      >
+                        ✎
+                      </button>
+                    )}
+                    {canRemove(p) && (
+                      <button
+                        onClick={() => handleDeleteParticipant(p)}
+                        className="text-slate-500 hover:text-rose-400 text-xs px-1"
+                        title="Sacar del equipo"
+                      >
+                        ✕
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
@@ -517,6 +597,67 @@ export default function ParticipantsSection({
           })
         )}
       </div>
+
+      {/* Tu lugar en el viaje: el creador lo traspasa; los demás pueden salir */}
+      {(isCreator || myName) && (
+        <div className="border-t border-slate-800 pt-4 flex flex-wrap items-center gap-2 text-[11px]">
+          {isCreator ? (
+            <button
+              onClick={() => setTransferOpen(true)}
+              className="font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-1.5 rounded-lg"
+            >
+              ⇄ Traspasar el {thing}
+            </button>
+          ) : (
+            <button
+              onClick={handleLeave}
+              disabled={busy}
+              className="font-semibold bg-slate-800 hover:bg-rose-950 text-slate-300 hover:text-rose-300 px-3 py-1.5 rounded-lg disabled:opacity-50"
+            >
+              {busy ? "Saliendo..." : `🚪 Salir del ${thing}`}
+            </button>
+          )}
+        </div>
+      )}
+
+      {transferOpen && (
+        <Modal title={`⇄ Traspasar el ${thing}`} onClose={() => setTransferOpen(false)}>
+          <div className="space-y-3 text-xs">
+            <p className="text-slate-400">
+              Quien elijas pasa a ser quien creó el {thing}: podrá borrarlo, traspasarlo y nombrar organizadores. Tú
+              sigues en el equipo como Organizador.
+            </p>
+            {transferCandidates.length === 0 ? (
+              <p className="text-amber-300">
+                Solo se puede traspasar a alguien que ya entró con su cuenta. Mándale su invitación y, cuando entre,
+                aparecerá aquí.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {transferCandidates.map((p) => (
+                  <button
+                    key={p.id}
+                    onClick={() => handleTransfer(p)}
+                    disabled={busy}
+                    className="w-full text-left bg-slate-950 hover:bg-slate-800 border border-slate-800 rounded-lg px-3 py-2 disabled:opacity-50"
+                  >
+                    <span className="font-semibold text-white">{p.name}</span>
+                    <span className="text-slate-500"> · {p.role}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            <div className="flex justify-end pt-1">
+              <button
+                onClick={() => setTransferOpen(false)}
+                className="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 font-semibold"
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }

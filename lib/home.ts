@@ -115,7 +115,7 @@ export function buildHomeSummary(input: {
     // Sin su correo en el equipo, la app no sabe cuál es: no funcionan "Yo lo llevo", "Me subo" ni su balance.
     // Un grupo de gastos no tiene fechas: sigue "abierto" mientras exista.
     if (!myName && (group || status !== "pasado")) {
-      // Solo el creador ve el botón "Soy yo" (editar el equipo es solo suyo)
+      // Solo el creador ve el botón "Soy yo"
       const isCreator = !!input.userId && String(trip.user_id) === String(input.userId);
       add(
         "🙋",

@@ -138,6 +138,12 @@ export default function TripScreen({ tripId }: { tripId: string }) {
     router.replace("/");
   };
 
+  // Al salir del viaje ya no se puede ver: de vuelta a Inicio
+  const handleLeftTrip = async () => {
+    await fetchTrips();
+    router.replace("/");
+  };
+
   // Quién es el usuario dentro del equipo del viaje (por su cuenta o su email)
   const meInTrip = participants.find((p) => isMe(p, userId, email));
   const myName = meInTrip?.name ?? null;
@@ -171,6 +177,8 @@ export default function TripScreen({ tripId }: { tripId: string }) {
     body = message("No encontramos este viaje, o no estás en su equipo.");
   } else {
     const isCreator = trip.user_id === userId;
+    // Los organizadores también editan el viaje y el equipo; borrar y traspasar es solo del creador
+    const isOrganizer = meInTrip?.role === "Organizador";
     const group = isExpenseGroup(trip);
     const tabs = (
       [
@@ -189,21 +197,21 @@ export default function TripScreen({ tripId }: { tripId: string }) {
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2 mb-1">
                 <h1 className="text-lg sm:text-xl font-bold text-white">{trip.name}</h1>
+                {(isCreator || isOrganizer) && (
+                  <button
+                    onClick={() => openEditTrip(trip)}
+                    className="text-[11px] text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 px-2 py-0.5 rounded-md transition-colors"
+                  >
+                    ✎ Editar
+                  </button>
+                )}
                 {isCreator && (
-                  <>
-                    <button
-                      onClick={() => openEditTrip(trip)}
-                      className="text-[11px] text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 px-2 py-0.5 rounded-md transition-colors"
-                    >
-                      ✎ Editar
-                    </button>
-                    <button
-                      onClick={handleDeleteTrip}
-                      className="text-[11px] text-slate-500 hover:text-rose-400 bg-slate-800 hover:bg-rose-950 px-2 py-0.5 rounded-md transition-colors"
-                    >
-                      ✕ Borrar
-                    </button>
-                  </>
+                  <button
+                    onClick={handleDeleteTrip}
+                    className="text-[11px] text-slate-500 hover:text-rose-400 bg-slate-800 hover:bg-rose-950 px-2 py-0.5 rounded-md transition-colors"
+                  >
+                    ✕ Borrar
+                  </button>
                 )}
               </div>
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-400">
@@ -263,7 +271,9 @@ export default function TripScreen({ tripId }: { tripId: string }) {
               tripId={trip.id}
               participants={participants}
               isCreator={isCreator}
-              seesAllLinks={isCreator || meInTrip?.role === "Organizador"}
+              isOrganizer={isOrganizer}
+              creatorUserId={trip.user_id ?? null}
+              seesAllLinks={isCreator || isOrganizer}
               userId={userId}
               tripName={trip.name}
               tripDetails={[formatDateRange(trip.start_date, trip.end_date), trip.destination].filter(Boolean).join(", ")}
@@ -271,6 +281,8 @@ export default function TripScreen({ tripId }: { tripId: string }) {
               myName={myName}
               myEmail={email}
               onRefresh={fetchDetails}
+              onTripChanged={fetchTrips}
+              onLeftTrip={handleLeftTrip}
             />
           )}
           {tab === "gear" && (
