@@ -20,6 +20,8 @@ interface AppContextValue {
   userId: string | null;
   email: string | null;
   displayName: string; // nombre para el saludo y para sumarse como organizador
+  // false = entra solo con Google: el menú ofrece "Crear contraseña" en vez de "Cambiar contraseña"
+  hasPassword: boolean;
   trips: Trip[];
   tripsLoading: boolean;
   tripsFailed: boolean; // la última carga de viajes falló (sin conexión, Supabase caído...)
@@ -49,6 +51,13 @@ function nameFromUser(user: User | null): string {
   if (raw.trim()) return raw.trim();
   const fromEmail = (user.email ?? "").split("@")[0];
   return fromEmail.charAt(0).toUpperCase() + fromEmail.slice(1);
+}
+
+// Tiene contraseña quien se registró con correo, o quien la creó desde el menú (user_metadata.tiene_clave)
+function hasPasswordOf(user: User | null): boolean {
+  if (!user) return false;
+  const providers = (user.app_metadata?.providers as string[] | undefined) ?? [user.app_metadata?.provider];
+  return providers.includes("email") || !!user.user_metadata?.tiene_clave;
 }
 
 export default function AppProvider({ children }: { children: ReactNode }) {
@@ -145,6 +154,7 @@ export default function AppProvider({ children }: { children: ReactNode }) {
     userId,
     email,
     displayName: nameFromUser(user),
+    hasPassword: hasPasswordOf(user),
     trips,
     tripsLoading,
     tripsFailed,
@@ -176,6 +186,8 @@ export default function AppProvider({ children }: { children: ReactNode }) {
       <NewPasswordModal
         isOpen={recovering || changingPassword}
         onCancel={changingPassword && !recovering ? () => setChangingPassword(false) : undefined}
+        creating={changingPassword && !recovering && !hasPasswordOf(user)}
+        email={email}
         onDone={() => {
           setRecovering(false);
           setChangingPassword(false);

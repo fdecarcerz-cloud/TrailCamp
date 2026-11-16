@@ -22,6 +22,7 @@ export interface Pending {
   tripId: string;
   tripName: string;
   urgent: boolean; // deudas tuyas e imprescindibles sin responsable van primero
+  debt?: boolean; // le debes o te deben plata (se avisa antes de borrar la cuenta)
 }
 
 export interface HomeSummary {
@@ -100,15 +101,15 @@ export function buildHomeSummary(input: {
       mine: me ? { share: me.consumed, paid: me.paid, balance: me.balance } : null,
     });
 
-    const add = (icon: string, text: string, urgent = false) =>
-      pending.push({ icon, text, tripId: trip.id, tripName: trip.name, urgent });
+    const add = (icon: string, text: string, urgent = false, debt = false) =>
+      pending.push({ icon, text, tripId: trip.id, tripName: trip.name, urgent, debt });
 
     // Deudas: también en viajes pasados, hasta que se paguen
     if (myName) {
       if (me && !group) mySpent += me.consumed;
       for (const t of computeTransfers(people)) {
-        if (t.from === myName) add("💸", `Le debes $${t.amount.toLocaleString("es-CL")} a ${t.to}`, true);
-        if (t.to === myName) add("💰", `${t.from} te debe $${t.amount.toLocaleString("es-CL")}`);
+        if (t.from === myName) add("💸", `Le debes $${t.amount.toLocaleString("es-CL")} a ${t.to}`, true, true);
+        if (t.to === myName) add("💰", `${t.from} te debe $${t.amount.toLocaleString("es-CL")}`, false, true);
       }
     }
 

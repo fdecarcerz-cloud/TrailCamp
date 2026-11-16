@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useApp } from "@/components/app/AppProvider";
+import DeleteAccountModal from "@/components/app/DeleteAccountModal";
 
 // "Mi cuenta": el nombre se guarda en los datos del usuario de Supabase (user_metadata.nombre),
 // sin tablas nuevas. Se usa en el saludo y al crear viajes.
@@ -11,6 +12,9 @@ export default function ProfileModal({ onClose }: { onClose: () => void }) {
   const [name, setName] = useState(displayName);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [deleting, setDeleting] = useState(false);
+
+  if (deleting) return <DeleteAccountModal onClose={onClose} />;
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -69,6 +73,11 @@ export default function ProfileModal({ onClose }: { onClose: () => void }) {
             </button>
           </div>
         </form>
+        <div className="mt-5 pt-4 border-t border-slate-800 text-xs">
+          <button type="button" onClick={() => setDeleting(true)} className="text-rose-400 hover:text-rose-300 font-semibold">
+            Borrar mi cuenta
+          </button>
+        </div>
       </div>
     </div>
   );

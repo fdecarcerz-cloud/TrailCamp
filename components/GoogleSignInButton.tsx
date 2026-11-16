@@ -131,7 +131,9 @@ export default function GoogleSignInButton({
 
   return (
     <div className="space-y-1.5">
-      <div ref={containerRef} className="w-full flex justify-center min-h-[44px]" />
+      {/* El botón de Google viene en modo claro: si hereda el modo oscuro de la app, el navegador
+          le pone un fondo blanco cuadrado detrás */}
+      <div ref={containerRef} className="w-full flex justify-center min-h-[44px] [color-scheme:light]" />
       {/* En algunos computadores el botón personalizado ("Continuar como…") no responde */}
       <p className="text-center text-[11px] text-slate-500">
         ¿El botón no responde?{" "}

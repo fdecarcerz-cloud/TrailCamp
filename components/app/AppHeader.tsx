@@ -8,7 +8,7 @@ import { useApp } from "@/components/app/AppProvider";
 // Barra superior. En Inicio muestra el logo; dentro de un viaje, "← Inicio" para volver.
 // A la derecha, el menú ⋯ (o "Entrar" si no hay sesión).
 export default function AppHeader({ backToHome = false }: { backToHome?: boolean }) {
-  const { userId, email, displayName, openAuth, openProfile, openChangePassword, openInstall, signOut } = useApp();
+  const { userId, email, displayName, hasPassword, openAuth, openProfile, openChangePassword, openInstall, signOut } = useApp();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -74,7 +74,7 @@ export default function AppHeader({ backToHome = false }: { backToHome?: boolean
                 📊  Estadísticas
               </Link>
               {item("👤  Mi cuenta", openProfile)}
-              {item("🔑  Cambiar contraseña", openChangePassword)}
+              {item(hasPassword ? "🔑  Cambiar contraseña" : "🔑  Crear contraseña", openChangePassword)}
               {item("📲  Instalar la app", openInstall)}
               <Link
                 href="/privacidad"

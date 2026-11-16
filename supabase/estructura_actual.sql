@@ -1,5 +1,5 @@
 -- Copia completa de la estructura de la base de datos de Supabase (schema public).
--- Foto tomada el 2026-11-17, después de aplicar migrations/20261117120000_organizadores_y_traspaso.sql.
+-- Foto tomada el 2026-11-18, después de aplicar migrations/20261118120000_borrar_mi_cuenta.sql.
 -- Incluye al final el bucket de Storage "boletas" y sus políticas.
 -- Sirve para recrear la base de datos desde cero en un proyecto vacío (SQL Editor -> pegar -> Run).
 -- No contiene datos (viajes, gastos, etc.), solo la estructura.
@@ -841,6 +841,23 @@ begin
 end;
 $$;
 
+create or replace function public.sucesor_del_viaje(p_viaje bigint, p_saliente uuid)
+returns table(participant_id bigint, user_id uuid)
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select p.id, coalesce(p.user_id, u.id)
+  from public.participants p
+  left join auth.users u on p.user_id is null and lower(u.email) = lower(p.email)
+  where p.trip_id = p_viaje
+    and coalesce(p.user_id, u.id) is not null
+    and coalesce(p.user_id, u.id) <> p_saliente
+  order by (p.role = 'Organizador') desc, p.created_at, p.id
+  limit 1;
+$$;
+
 create or replace function public.reasignar_viajes_al_borrar_cuenta()
 returns trigger
 language plpgsql
@@ -851,16 +868,11 @@ declare
   v_viaje bigint;
   v_part bigint;
   v_nuevo uuid;
+  v_ids bigint[];
 begin
   for v_viaje in select id from public.trips where user_id = old.id loop
-    select p.id, coalesce(p.user_id, u.id) into v_part, v_nuevo
-    from public.participants p
-    left join auth.users u on p.user_id is null and lower(u.email) = lower(p.email)
-    where p.trip_id = v_viaje
-      and coalesce(p.user_id, u.id) is not null
-      and coalesce(p.user_id, u.id) <> old.id
-    order by (p.role = 'Organizador') desc, p.created_at, p.id
-    limit 1;
+    select s.participant_id, s.user_id into v_part, v_nuevo
+    from public.sucesor_del_viaje(v_viaje, old.id) s;
 
     if v_nuevo is not null then
       update public.trips set user_id = v_nuevo where id = v_viaje;
@@ -869,7 +881,58 @@ begin
     v_part := null;
     v_nuevo := null;
   end loop;
+
+  select array_agg(id) into v_ids from public.participants
+  where user_id = old.id or (old.email is not null and lower(email) = lower(old.email));
+  if v_ids is not null then
+    update public.participants
+    set user_id = null,
+        email = null,
+        phone = null,
+        role = case when role = 'Organizador' then 'Participante' else role end
+    where id = any(v_ids);
+
+    update public.participant_invites set token = gen_random_uuid(), created_at = now()
+    where participant_id = any(v_ids);
+  end if;
+
   return old;
+end;
+$$;
+
+create or replace function public.resumen_borrar_mi_cuenta()
+returns table(trip_id bigint, viaje text, pasa_a text)
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select t.id, t.name, (
+    select p.name from public.participants p
+    where p.id = (select s.participant_id from public.sucesor_del_viaje(t.id, (select auth.uid())) s)
+  )
+  from public.trips t
+  where t.user_id = (select auth.uid())
+  order by t.created_at, t.id;
+$$;
+
+create or replace function public.borrar_mi_cuenta(p_confirmacion text)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_uid uuid := (select auth.uid());
+begin
+  if v_uid is null then
+    raise exception 'Inicia sesión para borrar tu cuenta.';
+  end if;
+  if upper(btrim(coalesce(p_confirmacion, ''))) <> 'BORRAR' then
+    raise exception 'Para confirmar, escribe BORRAR.';
+  end if;
+
+  delete from auth.users where id = v_uid;
 end;
 $$;
 
@@ -1244,7 +1307,12 @@ revoke execute on function public.traspasar_viaje(bigint, bigint) from public, a
 grant execute on function public.traspasar_viaje(bigint, bigint) to authenticated;
 revoke execute on function public.salir_del_viaje(bigint) from public, anon;
 grant execute on function public.salir_del_viaje(bigint) to authenticated;
+revoke execute on function public.sucesor_del_viaje(bigint, uuid) from public, anon, authenticated;
 revoke execute on function public.reasignar_viajes_al_borrar_cuenta() from public, anon, authenticated;
+revoke execute on function public.resumen_borrar_mi_cuenta() from public, anon;
+grant execute on function public.resumen_borrar_mi_cuenta() to authenticated;
+revoke execute on function public.borrar_mi_cuenta(text) from public, anon;
+grant execute on function public.borrar_mi_cuenta(text) to authenticated;
 
 -- Realtime (migración 20261016150000)
 alter publication supabase_realtime
