@@ -139,7 +139,8 @@ export default function TripScreen({ tripId }: { tripId: string }) {
   };
 
   // Quién es el usuario dentro del equipo del viaje (por su cuenta o su email)
-  const myName = participants.find((p) => isMe(p, userId, email))?.name ?? null;
+  const meInTrip = participants.find((p) => isMe(p, userId, email));
+  const myName = meInTrip?.name ?? null;
 
   const message = (text: string, action?: React.ReactNode) => (
     <div className="max-w-md mx-auto mt-16 flex flex-col items-center gap-4 text-center text-sm text-slate-400 px-4">
@@ -262,6 +263,8 @@ export default function TripScreen({ tripId }: { tripId: string }) {
               tripId={trip.id}
               participants={participants}
               isCreator={isCreator}
+              seesAllLinks={isCreator || meInTrip?.role === "Organizador"}
+              userId={userId}
               tripName={trip.name}
               tripDetails={[formatDateRange(trip.start_date, trip.end_date), trip.destination].filter(Boolean).join(", ")}
               expenseGroup={group}

@@ -49,7 +49,8 @@ export default function FrequentContacts({ onChange }: { onChange: (chosen: Cont
       <div>
         <span className="block text-slate-400 font-medium">¿Quiénes van?</span>
         <p className="text-[11px] text-slate-500">
-          Marca a gente de tus otros viajes. A los demás los sumas después en Equipo.
+          Marca a gente de tus otros viajes. A los demás los sumas después en Equipo. Quienes tienen
+          correo verán todo el viaje apenas entren.
         </p>
       </div>
 

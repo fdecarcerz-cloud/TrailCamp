@@ -7,6 +7,7 @@ import Modal, { GoneNotice } from "@/components/Modal";
 import { Participant } from "@/lib/types";
 import { formatPhone, normalizePhone, whatsappLink } from "@/lib/phone";
 import { errorMessage } from "@/lib/errors";
+import { EMAIL_HELP, isValidEmail } from "@/lib/email";
 
 type Role = Participant["role"];
 const ROLES: Role[] = ["Participante", "Guía", "Organizador"];
@@ -16,6 +17,10 @@ interface ParticipantsSectionProps {
   participants: Participant[];
   // Solo el creador del viaje puede editar o borrar (lo exige también RLS en Supabase)
   isCreator: boolean;
+  // El creador y los organizadores ven el link de todos; los demás, solo el de quienes sumaron
+  // (lo exige la función link_invitacion)
+  seesAllLinks: boolean;
+  userId: string | null;
   // Para armar el mensaje de invitación
   tripName: string;
   tripDetails: string;
@@ -42,6 +47,8 @@ export default function ParticipantsSection({
   tripId,
   participants,
   isCreator,
+  seesAllLinks,
+  userId,
   tripName,
   tripDetails,
   expenseGroup = false,
@@ -49,13 +56,46 @@ export default function ParticipantsSection({
   myEmail,
   onRefresh,
 }: ParticipantsSectionProps) {
-  // Invitación por persona: un link propio que une su cuenta (Google o correo) con su lugar
-  const [invitingId, setInvitingId] = useState<string | null>(null);
+  // Invitación por persona: un link propio que une su cuenta (Google o correo) con su lugar.
+  // El link se pide a la base al abrir la invitación, que revisa quién puede verlo.
+  const [invite, setInvite] = useState<{ id: string; token: string } | null>(null);
+  const [loadingInviteId, setLoadingInviteId] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
-  const inviteMessage = (p: Participant) => {
+  const canInvite = (p: Participant) => seesAllLinks || (!!userId && p.added_by === userId);
+
+  const fetchInviteToken = async (id: string) => {
+    const { data, error } = await supabase.rpc("link_invitacion", { p_participante: id });
+    if (error) throw error;
+    return String(data);
+  };
+
+  const openInvite = async (id: string) => {
+    setLoadingInviteId(String(id));
+    try {
+      const token = await fetchInviteToken(id);
+      setInvite({ id: String(id), token });
+      setCopied(false);
+    } catch (err) {
+      alert("No se pudo abrir la invitación: " + errorMessage(err));
+    } finally {
+      setLoadingInviteId(null);
+    }
+  };
+
+  // Quien tiene correo ve el viaje apenas entra con esa cuenta: se confirma antes de guardarlo
+  const confirmEmail = (personName: string, mail: string) =>
+    confirm(
+      `${personName} va a poder ver ${
+        expenseGroup
+          ? "todo el grupo: el equipo y los gastos"
+          : "todo el viaje: el equipo, el material, los autos, los gastos y las notas"
+      } apenas entre con ${mail}.\n\n¿El correo está bien escrito?`
+    );
+
+  const inviteMessage = (p: Participant, token: string) => {
     const origin = typeof window !== "undefined" ? window.location.origin : "https://trail-camp.vercel.app";
-    const url = `${origin}/invitacion/${p.invite_token}`;
+    const url = `${origin}/invitacion/${token}`;
     return [
       expenseGroup
         ? `¡Hola ${p.name}! Te sumé al grupo "${tripName}" en TrailCamp, donde llevamos las cuentas de los gastos compartidos.`
@@ -67,9 +107,9 @@ export default function ParticipantsSection({
     ].join("\n");
   };
 
-  const handleCopyInvite = async (p: Participant) => {
+  const handleCopyInvite = async (p: Participant, token: string) => {
     try {
-      await navigator.clipboard.writeText(inviteMessage(p));
+      await navigator.clipboard.writeText(inviteMessage(p, token));
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
@@ -105,6 +145,12 @@ export default function ParticipantsSection({
       alert(PHONE_HELP);
       return;
     }
+    const cleanEmail = email.trim();
+    if (cleanEmail && !isValidEmail(cleanEmail)) {
+      alert(EMAIL_HELP);
+      return;
+    }
+    if (cleanEmail && !confirmEmail(name.trim(), cleanEmail)) return;
 
     setLoading(true);
     try {
@@ -114,7 +160,7 @@ export default function ParticipantsSection({
           {
             trip_id: tripId,
             name: name.trim(),
-            email: email.trim() || null,
+            email: cleanEmail || null,
             phone: cleanPhone,
             role,
             status: "Confirmado",
@@ -129,10 +175,9 @@ export default function ParticipantsSection({
       setEmail("");
       setPhone("");
       setRole("Participante");
-      // Queda abierta su invitación, lista para mandarla
-      setInvitingId(data.id);
-      setCopied(false);
       onRefresh();
+      // Queda abierta su invitación, lista para mandarla
+      await openInvite(data.id);
     } catch (err) {
       alert("Error agregando participante: " + errorMessage(err));
     } finally {
@@ -162,6 +207,18 @@ export default function ParticipantsSection({
       alert(PHONE_HELP);
       return;
     }
+    const cleanEmail = editEmail.trim();
+    if (cleanEmail && !isValidEmail(cleanEmail)) {
+      alert(EMAIL_HELP);
+      return;
+    }
+    if (
+      cleanEmail &&
+      normalize(cleanEmail) !== normalize(p.email ?? "") &&
+      !confirmEmail(editName.trim(), cleanEmail)
+    ) {
+      return;
+    }
 
     setSavingEdit(true);
     try {
@@ -169,7 +226,7 @@ export default function ParticipantsSection({
       const { error } = await supabase.rpc("renombrar_participante", {
         p_id: p.id,
         p_nombre: editName.trim(),
-        p_email: editEmail.trim(),
+        p_email: cleanEmail,
         p_rol: editRole,
         p_telefono: cleanPhone,
       });
@@ -188,9 +245,14 @@ export default function ParticipantsSection({
   const handleThisIsMe = async (p: Participant) => {
     if (!myEmail) return;
     if (!confirm(`¿Eres "${p.name}"? Se unirá a tu cuenta (${myEmail}) para que la app te reconozca en este viaje.`)) return;
-    const { error } = await supabase.rpc("aceptar_invitacion", { p_token: p.invite_token });
-    if (error) alert("No se pudo guardar: " + error.message);
-    else onRefresh();
+    try {
+      const token = await fetchInviteToken(p.id);
+      const { error } = await supabase.rpc("aceptar_invitacion", { p_token: token });
+      if (error) throw error;
+      onRefresh();
+    } catch (err) {
+      alert("No se pudo guardar: " + errorMessage(err));
+    }
   };
 
   const handleDeleteParticipant = async (p: Participant) => {
@@ -258,7 +320,7 @@ export default function ParticipantsSection({
               onChange={(e) => setRole(e.target.value as Role)}
               className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
             >
-              {ROLES.map((r) => (
+              {ROLES.filter((r) => isCreator || r !== "Organizador").map((r) => (
                 <option key={r} value={r}>
                   {r}
                 </option>
@@ -376,7 +438,11 @@ export default function ParticipantsSection({
                   {p.email && <div className="text-[11px] text-slate-400 truncate">{p.email}</div>}
                   {p.phone && <div className="text-[11px] text-slate-400">{formatPhone(p.phone)}</div>}
                   {!p.user_id && !p.email && (
-                    <div className="text-[11px] text-amber-400">⚠️ Todavía no entra: mándale su invitación</div>
+                    <div className="text-[11px] text-amber-400">
+                      {canInvite(p)
+                        ? "⚠️ Todavía no entra: mándale su invitación"
+                        : "⚠️ Todavía no entra: quien lo sumó puede mandarle su invitación"}
+                    </div>
                   )}
                   {!p.user_id && !myName && isCreator && myEmail && (
                     <button
@@ -407,24 +473,24 @@ export default function ParticipantsSection({
                 )}
               </div>
 
-              {!p.user_id && p.name !== myName && invitingId !== p.id && (
+              {!p.user_id && p.name !== myName && canInvite(p) && invite?.id !== String(p.id) && (
                 <button
-                  onClick={() => {
-                    setInvitingId(p.id);
-                    setCopied(false);
-                  }}
-                  className="text-[11px] text-emerald-400 hover:text-emerald-300"
+                  onClick={() => openInvite(p.id)}
+                  disabled={loadingInviteId === String(p.id)}
+                  className="text-[11px] text-emerald-400 hover:text-emerald-300 disabled:opacity-50"
                 >
-                  📲 Invitar a {p.name}
+                  {loadingInviteId === String(p.id) ? "Abriendo invitación..." : `📲 Invitar a ${p.name}`}
                 </button>
               )}
 
-              {invitingId === p.id && (
+              {invite?.id === String(p.id) && (
                 <div className="bg-slate-950 border border-slate-800 rounded-lg p-2.5 space-y-2">
-                  <p className="text-[11px] text-slate-300 whitespace-pre-line select-all">{inviteMessage(p)}</p>
+                  <p className="text-[11px] text-slate-300 whitespace-pre-line select-all">
+                    {inviteMessage(p, invite.token)}
+                  </p>
                   <div className="flex flex-wrap gap-2">
                     <a
-                      href={whatsappLink(inviteMessage(p), p.phone)}
+                      href={whatsappLink(inviteMessage(p, invite.token), p.phone)}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-[11px] font-semibold bg-emerald-600 hover:bg-emerald-500 text-white px-2.5 py-1 rounded-md"
@@ -432,13 +498,13 @@ export default function ParticipantsSection({
                       {p.phone ? `Enviar por WhatsApp a ${formatPhone(p.phone)}` : "Enviar por WhatsApp"}
                     </a>
                     <button
-                      onClick={() => handleCopyInvite(p)}
+                      onClick={() => handleCopyInvite(p, invite.token)}
                       className="text-[11px] font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 px-2.5 py-1 rounded-md"
                     >
                       {copied ? "✓ Copiado" : "📋 Copiar mensaje"}
                     </button>
                     <button
-                      onClick={() => setInvitingId(null)}
+                      onClick={() => setInvite(null)}
                       className="text-[11px] text-slate-500 hover:text-slate-300 px-1"
                     >
                       Cerrar

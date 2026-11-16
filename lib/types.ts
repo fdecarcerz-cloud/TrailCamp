@@ -30,7 +30,9 @@ export interface Participant {
   phone?: string | null;
   // Cuenta unida al aceptar el link de invitación (null si aún no entra con el link)
   user_id?: string | null;
-  invite_token: string;
+  // Cuenta de quien sumó a la persona (la pone la base). Su link de invitación lo ven solo
+  // ella, el creador y los organizadores: se pide con la función link_invitacion.
+  added_by?: string | null;
   role: "Organizador" | "Guía" | "Participante";
   status: "Confirmado" | "Pendiente" | "Cancelado";
   created_at?: string;
