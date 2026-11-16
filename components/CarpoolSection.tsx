@@ -4,7 +4,7 @@ import { useState } from "react";
 import { supabase } from "@/lib/supabase";
 import AddFormToggle from "@/components/AddFormToggle";
 import Modal, { GoneNotice } from "@/components/Modal";
-import { Carpool, Participant } from "@/lib/types";
+import { Carpool, Participant, isGoing } from "@/lib/types";
 import { errorMessage } from "@/lib/errors";
 
 interface CarpoolSectionProps {
@@ -178,13 +178,17 @@ export default function CarpoolSection({
   // Quienes manejan no pueden ir de pasajeros en ningún auto
   const driverNames = new Set(carpools.map((c) => c.driver_name).filter(Boolean));
 
+  // Quien marcó "No voy" no maneja ni se sube (lo exigen también las funciones de la base)
+  const going = participants.filter(isGoing);
+  const iGo = !!myName && going.some((p) => p.name === myName);
+
   // Quién todavía no tiene cómo llegar
   const withCar = new Set<string>();
   carpools.forEach((c) => {
     if (c.driver_name) withCar.add(c.driver_name);
     passengersOf(c).forEach((p) => withCar.add(p));
   });
-  const withoutCar = participants.filter((p) => !withCar.has(p.name));
+  const withoutCar = going.filter((p) => !withCar.has(p.name));
   const freeSeats = carpools.reduce(
     (sum, c) => sum + Math.max(0, (Number(c.seats_available) || 0) - passengersOf(c).length),
     0
@@ -193,7 +197,7 @@ export default function CarpoolSection({
   const participantOptions = (extra?: string) => (
     <>
       <option value="">Elegir conductor…</option>
-      {participants.map((p) => (
+      {going.map((p) => (
         <option key={p.id} value={p.name}>
           {p.name}
         </option>
@@ -210,7 +214,7 @@ export default function CarpoolSection({
 
   return (
     <div className="space-y-6">
-      {participants.length > 0 && carpools.length > 0 && (
+      {going.length > 0 && carpools.length > 0 && (
         <div
           className={`text-xs px-4 py-3 rounded-xl border ${
             withoutCar.length > 0
@@ -457,7 +461,7 @@ export default function CarpoolSection({
                   </div>
                 </div>
 
-                {myName && !driverNames.has(myName) && (iAmIn || !isFull) && (
+                {myName && iGo && !driverNames.has(myName) && (iAmIn || !isFull) && (
                   <button
                     onClick={() => handleTogglePassenger(car, myName)}
                     disabled={!!busy}
@@ -475,11 +479,11 @@ export default function CarpoolSection({
                   </button>
                 )}
 
-                {participants.length > 0 && (
+                {going.length > 0 && (
                   <div className="pt-2 border-t border-slate-800/80">
                     <p className="text-[10px] text-slate-500 mb-1">Subir / bajar a alguien:</p>
                     <div className="flex flex-wrap gap-1">
-                      {participants
+                      {going
                         .filter((pt) => !driverNames.has(pt.name))
                         .map((pt) => {
                           const inThisCar = passengers.includes(pt.name);

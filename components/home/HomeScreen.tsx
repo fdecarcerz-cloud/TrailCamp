@@ -178,6 +178,7 @@ function FeaturedTrip({ card }: { card: TripCard }) {
       </p>
       <p className="text-2xl font-black text-white mt-4">{countdownLabel(trip.start_date, trip.end_date)}</p>
       <div className="flex flex-wrap gap-x-4 gap-y-1 mt-3 text-xs text-slate-300">
+        {card.notGoing && <span className="font-semibold text-rose-300">🚫 No vas</span>}
         <span>👥 {card.people} {card.people === 1 ? "persona" : "personas"}</span>
         {card.gearTotal > 0 && (
           <span>
@@ -203,6 +204,7 @@ function TripRow({ card, muted = false }: { card: TripCard; muted?: boolean }) {
       <div className="flex-1 min-w-0">
         <p className={`text-sm font-semibold truncate ${muted ? "text-slate-300" : "text-white"}`}>{trip.name}</p>
         <p className="text-[11px] text-slate-400 truncate">
+          {card.notGoing && <span className="font-semibold text-rose-300">No vas · </span>}
           📍 {trip.destination} · {formatDateRange(trip.start_date, trip.end_date)}
         </p>
       </div>

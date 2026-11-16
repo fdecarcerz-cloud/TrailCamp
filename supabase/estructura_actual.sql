@@ -1,5 +1,5 @@
 -- Copia completa de la estructura de la base de datos de Supabase (schema public).
--- Foto tomada el 2026-11-18, después de aplicar migrations/20261118120000_borrar_mi_cuenta.sql.
+-- Foto tomada el 2026-11-19, después de aplicar migrations/20261119120000_asistencia.sql.
 -- Incluye al final el bucket de Storage "boletas" y sus políticas.
 -- Sirve para recrear la base de datos desde cero en un proyecto vacío (SQL Editor -> pegar -> Run).
 -- No contiene datos (viajes, gastos, etc.), solo la estructura.
@@ -63,7 +63,7 @@ create table if not exists public.participants (
   trip_id bigint not null,
   name text not null,
   role text default 'Participante'::text not null,
-  status text default 'Pendiente'::text not null,
+  status text default 'Confirmado'::text not null,
   created_at timestamp with time zone default timezone('utc'::text, now()) not null,
   email text,
   phone text,
@@ -134,6 +134,8 @@ alter table expenses add constraint expenses_updated_by_fkey FOREIGN KEY (update
 alter table expenses add constraint expenses_deleted_by_fkey FOREIGN KEY (deleted_by) REFERENCES auth.users(id) ON DELETE SET NULL;
 
 alter table gear add constraint gear_trip_id_fkey FOREIGN KEY (trip_id) REFERENCES trips(id) ON DELETE CASCADE;
+
+alter table participants add constraint participants_status_valido CHECK ((status = ANY (ARRAY['Confirmado'::text, 'Pendiente'::text, 'Cancelado'::text])));
 
 alter table participants add constraint participants_phone_largo CHECK (((phone IS NULL) OR (length(phone) <= 20)));
 
@@ -394,6 +396,9 @@ begin
   if not public.es_del_equipo(p_viaje, p_conductor) then
     raise exception '% no está en el equipo de este viaje.', p_conductor;
   end if;
+  if public.no_va(p_viaje, p_conductor) then
+    raise exception '% marcó "No voy": no puede manejar.', p_conductor;
+  end if;
   if exists (select 1 from public.carpools where trip_id = p_viaje and driver_name = p_conductor) then
     raise exception '% ya maneja otro auto en este viaje.', p_conductor;
   end if;
@@ -456,6 +461,9 @@ begin
   if p_conductor is distinct from v_auto.driver_name and not public.es_del_equipo(v_viaje, p_conductor) then
     raise exception '% no está en el equipo de este viaje.', p_conductor;
   end if;
+  if p_conductor is distinct from v_auto.driver_name and public.no_va(v_viaje, p_conductor) then
+    raise exception '% marcó "No voy": no puede manejar.', p_conductor;
+  end if;
   if exists (select 1 from public.carpools where trip_id = v_viaje and id <> p_auto and driver_name = p_conductor) then
     raise exception '% ya maneja otro auto en este viaje.', p_conductor;
   end if;
@@ -505,6 +513,9 @@ begin
 
   if not public.es_del_equipo(v_viaje, p_nombre) then
     raise exception '% no está en el equipo de este viaje.', p_nombre;
+  end if;
+  if public.no_va(v_viaje, p_nombre) then
+    raise exception '% marcó "No voy": no puede subirse a un auto.', p_nombre;
   end if;
   if v_auto.driver_name = p_nombre then
     raise exception '% maneja este auto.', p_nombre;
@@ -967,7 +978,7 @@ $function$
 ;
 
 create or replace function public.ver_invitacion(p_token uuid)
-returns table(trip_id bigint, viaje text, destino text, inicio text, fin text, nombre text, ocupada boolean, es_mia boolean)
+returns table(trip_id bigint, viaje text, destino text, inicio text, fin text, nombre text, ocupada boolean, es_mia boolean, tipo text)
 language sql
 stable
 security definer
@@ -975,7 +986,8 @@ set search_path = ''
 as $$
   select t.id, t.name, t.destination, t.start_date, t.end_date, p.name,
     p.user_id is not null,
-    p.user_id is not null and p.user_id = (select auth.uid())
+    p.user_id is not null and p.user_id = (select auth.uid()),
+    t.kind
   from public.participant_invites i
   join public.participants p on p.id = i.participant_id
   join public.trips t on t.id = p.trip_id
@@ -1175,11 +1187,102 @@ begin
 end;
 $$;
 
+create or replace function public.no_va(p_viaje bigint, p_nombre text)
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select exists (
+    select 1 from public.participants
+    where trip_id = p_viaje and name = p_nombre and status = 'Cancelado'
+  );
+$$;
+
+create or replace function public.asistencia_no_voy()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if new.status = 'Cancelado' and old.status is distinct from 'Cancelado' then
+    -- El mismo bloqueo que usan las funciones de autos, para no pisarse
+    perform 1 from public.trips where id = new.trip_id for no key update;
+
+    if exists (select 1 from public.carpools where trip_id = new.trip_id and driver_name = old.name) then
+      raise exception '% maneja un auto en este viaje. Cambia el conductor o borra ese auto antes de marcar "No voy".', old.name;
+    end if;
+
+    update public.carpools set passengers = array_remove(passengers, old.name)
+    where trip_id = new.trip_id and old.name = any(passengers);
+
+    update public.gear set assigned_to = null, status = 'Pendiente'
+    where trip_id = new.trip_id and assigned_to = old.name;
+  end if;
+  return new;
+end;
+$$;
+
+create or replace function public.material_sin_no_voy()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  if new.assigned_to is not null
+     and (tg_op = 'INSERT' or new.assigned_to is distinct from old.assigned_to)
+     and exists (
+       select 1 from public.participants
+       where trip_id = new.trip_id and name = new.assigned_to and status = 'Cancelado'
+     ) then
+    raise exception '% marcó "No voy": no se le puede asignar material.', new.assigned_to;
+  end if;
+  return new;
+end;
+$$;
+
+create or replace function public.cambiar_asistencia(p_participante bigint, p_estado text)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_part public.participants%rowtype;
+  v_propia boolean;
+begin
+  if p_estado is null or p_estado not in ('Confirmado', 'Pendiente', 'Cancelado') then
+    raise exception 'La asistencia no es válida.';
+  end if;
+
+  select * into v_part from public.participants where id = p_participante;
+  if not found or not public.puede_ver_viaje(v_part.trip_id) then
+    raise exception 'No se encontró a esa persona en el equipo.';
+  end if;
+
+  v_propia := v_part.user_id = (select auth.uid())
+    or lower(v_part.email) = lower((select auth.jwt()) ->> 'email');
+  if not coalesce(v_propia, false)
+     and not public.es_creador_viaje(v_part.trip_id)
+     and not public.es_organizador_viaje(v_part.trip_id) then
+    raise exception 'Solo %, el creador del viaje y los organizadores pueden cambiar su asistencia.', v_part.name;
+  end if;
+
+  update public.participants set status = p_estado where id = p_participante;
+end;
+$$;
+
 CREATE TRIGGER gasto_historial BEFORE INSERT OR UPDATE ON public.expenses FOR EACH ROW EXECUTE FUNCTION gasto_historial();
 
 CREATE TRIGGER crear_invitacion_participante AFTER INSERT ON public.participants FOR EACH ROW EXECUTE FUNCTION crear_invitacion_participante();
 
 CREATE TRIGGER participante_nuevo_seguro BEFORE INSERT ON public.participants FOR EACH ROW EXECUTE FUNCTION participante_nuevo_seguro();
+
+CREATE TRIGGER asistencia_no_voy BEFORE UPDATE OF status ON public.participants FOR EACH ROW EXECUTE FUNCTION asistencia_no_voy();
+
+CREATE TRIGGER material_sin_no_voy BEFORE INSERT OR UPDATE OF assigned_to ON public.gear FOR EACH ROW EXECUTE FUNCTION material_sin_no_voy();
 
 CREATE TRIGGER trg_limpiar_ubicacion_viaje BEFORE UPDATE ON public.trips FOR EACH ROW EXECUTE FUNCTION limpiar_ubicacion_viaje();
 
@@ -1313,6 +1416,11 @@ revoke execute on function public.resumen_borrar_mi_cuenta() from public, anon;
 grant execute on function public.resumen_borrar_mi_cuenta() to authenticated;
 revoke execute on function public.borrar_mi_cuenta(text) from public, anon;
 grant execute on function public.borrar_mi_cuenta(text) to authenticated;
+revoke execute on function public.no_va(bigint, text) from public, anon, authenticated;
+revoke execute on function public.asistencia_no_voy() from public, anon, authenticated;
+revoke execute on function public.material_sin_no_voy() from public, anon, authenticated;
+revoke execute on function public.cambiar_asistencia(bigint, text) from public, anon;
+grant execute on function public.cambiar_asistencia(bigint, text) to authenticated;
 
 -- Realtime (migración 20261016150000)
 alter publication supabase_realtime

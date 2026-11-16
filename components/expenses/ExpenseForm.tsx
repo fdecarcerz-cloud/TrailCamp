@@ -33,6 +33,8 @@ export interface ExpenseDraft {
 
 interface ExpenseFormProps {
   participants: Participant[];
+  // Marcaron "No voy": en un gasto nuevo parten sin marcar
+  notGoing?: string[];
   initial?: Expense;
   saving: boolean;
   submitLabel: string;
@@ -48,6 +50,7 @@ const inputClass =
 // Formulario de gasto estilo Tricount: partes iguales, por partes (2 y 1) o montos exactos
 export default function ExpenseForm({
   participants,
+  notGoing = [],
   initial,
   saving,
   submitLabel,
@@ -73,7 +76,7 @@ export default function ExpenseForm({
   const [notes, setNotes] = useState(initial?.notes ?? "");
   const [mode, setMode] = useState<SplitMode>(initial?.split_mode ?? "igual");
   const [included, setIncluded] = useState<string[]>(
-    initial ? initial.split_between.filter((n) => names.includes(n)) : names
+    initial ? initial.split_between.filter((n) => names.includes(n)) : names.filter((n) => !notGoing.includes(n))
   );
   const [values, setValues] = useState<Record<string, string>>(initialValues);
   // null = la categoría se deduce sola de la descripción
@@ -280,6 +283,7 @@ export default function ExpenseForm({
                       className="accent-emerald-500 w-4 h-4 shrink-0"
                     />
                     <span className="truncate text-slate-200">{p.name}</span>
+                    {notGoing.includes(p.name) && <span className="text-[10px] text-slate-500 shrink-0">no va</span>}
                   </label>
                   {on && mode !== "igual" && (
                     <div className="flex items-center gap-1 shrink-0">

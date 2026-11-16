@@ -36,6 +36,8 @@ interface ExpensesSectionProps {
   tripName: string;
   // Solo el creador del viaje borra para siempre lo de la papelera
   isCreator: boolean;
+  // Marcaron "No voy": no parten marcados en un gasto nuevo (se pueden marcar a mano)
+  notGoing?: string[];
   onRefresh: () => void;
 }
 
@@ -57,6 +59,7 @@ export default function ExpensesSection({
   myName,
   tripName,
   isCreator,
+  notGoing = [],
   onRefresh,
 }: ExpensesSectionProps) {
   const [saving, setSaving] = useState(false);
@@ -516,7 +519,13 @@ export default function ExpensesSection({
       </button>
 
       {adding && (
-        <ExpenseModal participants={participants} saving={saving} onSubmit={handleAddExpense} onClose={() => setAdding(false)} />
+        <ExpenseModal
+          participants={participants}
+          notGoing={notGoing}
+          saving={saving}
+          onSubmit={handleAddExpense}
+          onClose={() => setAdding(false)}
+        />
       )}
 
       {viewing && (

@@ -6,7 +6,7 @@ import { supabase } from "@/lib/supabase";
 import { formatDateRange, countdownLabel } from "@/lib/dates";
 import { isMe } from "@/lib/home";
 import { removeReceipts } from "@/lib/receipts";
-import { isExpenseGroup, type Carpool, type Expense, type GearItem, type Participant } from "@/lib/types";
+import { isExpenseGroup, isGoing, type Carpool, type Expense, type GearItem, type Participant } from "@/lib/types";
 import { useApp } from "@/components/app/AppProvider";
 import AppHeader from "@/components/app/AppHeader";
 import Logo from "@/components/Logo";
@@ -255,7 +255,7 @@ export default function TripScreen({ tripId }: { tripId: string }) {
                 key={`${trip.id}-${trip.destination}`}
                 trip={trip}
                 gear={gear}
-                people={participants.length}
+                people={participants.filter(isGoing).length}
                 onGearAdded={fetchDetails}
                 onPlaceSaved={fetchTrips}
               />
@@ -270,6 +270,8 @@ export default function TripScreen({ tripId }: { tripId: string }) {
             <ParticipantsSection
               tripId={trip.id}
               participants={participants}
+              gear={gear}
+              carpools={carpools}
               isCreator={isCreator}
               isOrganizer={isOrganizer}
               creatorUserId={trip.user_id ?? null}
@@ -313,6 +315,8 @@ export default function TripScreen({ tripId }: { tripId: string }) {
               myName={myName}
               tripName={trip.name}
               isCreator={isCreator}
+              // En un grupo de gastos no se pregunta asistencia: todos parten marcados
+              notGoing={group ? [] : participants.filter((p) => !isGoing(p)).map((p) => p.name)}
               onRefresh={fetchDetails}
             />
           )}

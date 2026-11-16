@@ -11,13 +11,22 @@ interface ExpenseModalProps {
   // Otra persona lo mandó a la papelera o lo borró mientras se editaba (llegó por tiempo real)
   gone?: boolean;
   participants: Participant[];
+  notGoing?: string[];
   saving: boolean;
   onSubmit: (draft: ExpenseDraft) => void;
   onClose: () => void;
 }
 
 // Registrar o editar un gasto en una ventana encima de todo
-export default function ExpenseModal({ expense, gone = false, participants, saving, onSubmit, onClose }: ExpenseModalProps) {
+export default function ExpenseModal({
+  expense,
+  gone = false,
+  participants,
+  notGoing,
+  saving,
+  onSubmit,
+  onClose,
+}: ExpenseModalProps) {
   return (
     <Modal title={expense ? "✎ Editar gasto" : "💸 Registrar gasto"} onClose={onClose}>
       {expense && gone ? (
@@ -36,6 +45,7 @@ export default function ExpenseModal({ expense, gone = false, participants, savi
           <ExpenseForm
             bare
             participants={participants}
+            notGoing={notGoing}
             initial={expense}
             saving={saving}
             submitLabel={expense ? "Guardar cambios" : "+ Registrar gasto"}

@@ -1,4 +1,4 @@
-import { isExpenseGroup, type Carpool, type Expense, type GearItem, type Participant, type Trip } from "@/lib/types";
+import { isExpenseGroup, isGoing, type Carpool, type Expense, type GearItem, type Participant, type Trip } from "@/lib/types";
 import { nightsOf, todayISO, tripStatus, type TripStatus } from "@/lib/dates";
 import { categoryOf, computeTransfers, sharesOf, summarize, type Category } from "@/lib/expenses";
 
@@ -8,7 +8,9 @@ export interface TripCard {
   trip: Trip;
   status: TripStatus;
   myName: string | null;
-  people: number;
+  // Marcaste "No voy" (en un grupo de gastos no se pregunta)
+  notGoing: boolean;
+  people: number; // en un viaje, sin contar a quienes no van
   gearTotal: number;
   gearPacked: number;
   totalSpent: number;
@@ -75,12 +77,14 @@ export function buildHomeSummary(input: {
     const tGear = of(gear, trip.id);
     const tCars = of(carpools, trip.id);
     const tExp = of(expenses, trip.id);
-    const myName = tParts.find((p) => isMe(p, userId, email))?.name ?? null;
+    const myCard = tParts.find((p) => isMe(p, userId, email));
+    const myName = myCard?.name ?? null;
     const status = tripStatus(trip.start_date, trip.end_date, today);
     const people = summarize(tParts, tExp);
     const me = myName ? people.find((p) => p.name === myName) : undefined;
     // Los grupos de solo gastos tienen sus deudas en pendientes, pero no cuentan en las estadísticas
     const group = isExpenseGroup(trip);
+    const notGoing = !group && !!myCard && !isGoing(myCard);
 
     if (myName && !group) {
       for (const e of tExp) {
@@ -94,7 +98,8 @@ export function buildHomeSummary(input: {
       trip,
       status,
       myName,
-      people: tParts.length,
+      notGoing,
+      people: group ? tParts.length : tParts.filter(isGoing).length,
       gearTotal: tGear.length,
       gearPacked: tGear.filter((g) => g.status === "Empacado").length,
       totalSpent: tExp.filter((e) => !e.is_settlement).reduce((s, e) => s + (Number(e.amount) || 0), 0),
@@ -128,7 +133,8 @@ export function buildHomeSummary(input: {
     }
 
     // Material y autos: solo en viajes (un grupo que antes fue viaje los tiene guardados, pero ocultos)
-    if (!group && status !== "pasado") {
+    // y no si marcaste "No voy" (las deudas sí siguen apareciendo)
+    if (!group && !notGoing && status !== "pasado") {
       const critical = tGear.filter(
         (g) => g.priority === "Imprescindible" && g.status !== "Empacado" && !g.assigned_to
       ).length;

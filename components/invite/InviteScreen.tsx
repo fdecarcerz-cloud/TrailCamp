@@ -8,6 +8,8 @@ import { useApp } from "@/components/app/AppProvider";
 import AppHeader from "@/components/app/AppHeader";
 import Logo from "@/components/Logo";
 import { forgetInvite, rememberInvite } from "@/lib/invite";
+import { changeAttendance } from "@/lib/attendance";
+import { ATTENDANCE_LABELS, type Attendance, type Participant } from "@/lib/types";
 
 interface Invite {
   trip_id: number;
@@ -18,7 +20,10 @@ interface Invite {
   nombre: string;
   ocupada: boolean;
   es_mia: boolean;
+  tipo?: "viaje" | "gastos"; // en un grupo de gastos no se pregunta asistencia
 }
+
+const ATTENDANCE: Attendance[] = ["Confirmado", "Pendiente", "Cancelado"];
 
 // Pantalla del link de invitación (/invitacion/[token]): une la cuenta con su lugar del equipo
 export default function InviteScreen({ token }: { token: string }) {
@@ -29,6 +34,7 @@ export default function InviteScreen({ token }: { token: string }) {
   const [retry, setRetry] = useState(0);
   const [joining, setJoining] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
+  const [attendance, setAttendance] = useState<Attendance>("Confirmado");
 
   useEffect(() => {
     if (!authReady) return;
@@ -61,7 +67,22 @@ export default function InviteScreen({ token }: { token: string }) {
       setJoining(false);
       return;
     }
+    // Ya en el equipo (parte en "Voy"): si eligió otra cosa, se cambia ahora que puede ver el viaje
+    if (attendance !== "Confirmado") await saveAttendance(data as number);
     await goToTrip(data as number);
+  };
+
+  const saveAttendance = async (tripId: number) => {
+    const [me, g, c] = await Promise.all([
+      supabase.from("participants").select("*").eq("trip_id", tripId).eq("user_id", userId ?? "").maybeSingle(),
+      supabase.from("gear").select("*").eq("trip_id", tripId),
+      supabase.from("carpools").select("*").eq("trip_id", tripId),
+    ]);
+    if (!me.data || g.error || c.error) {
+      alert(`Ya estás en el viaje, pero no se pudo guardar "${ATTENDANCE_LABELS[attendance]}". Cámbialo en la pestaña Equipo.`);
+      return;
+    }
+    await changeAttendance(me.data as Participant, attendance, g.data ?? [], c.data ?? [], true);
   };
 
   let body: React.ReactNode;
@@ -124,6 +145,26 @@ export default function InviteScreen({ token }: { token: string }) {
             <p className="text-xs">
               Vas a quedar en el equipo como {invite.nombre}, con tu cuenta {email}.
             </p>
+            {invite.tipo !== "gastos" && (
+              <div className="w-full space-y-1.5">
+                <p className="text-xs text-slate-300">¿Vas?</p>
+                <div className="grid grid-cols-3 gap-1 bg-slate-900 p-1 rounded-lg border border-slate-800 text-xs">
+                  {ATTENDANCE.map((s) => (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => setAttendance(s)}
+                      className={`px-2 py-1.5 rounded-md font-medium ${
+                        attendance === s ? "bg-emerald-600 text-white" : "text-slate-400 hover:text-white"
+                      }`}
+                    >
+                      {ATTENDANCE_LABELS[s]}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[11px] text-slate-500">Puedes cambiarlo después en la pestaña Equipo.</p>
+              </div>
+            )}
             {button(joining ? "Sumándote..." : `Sumarme como ${invite.nombre}`, handleJoin, joining)}
             {errorMsg && <p className="text-rose-400 text-xs">{errorMsg}</p>}
           </>

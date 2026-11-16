@@ -4,7 +4,8 @@ import { useState } from "react";
 import { supabase } from "@/lib/supabase";
 import AddFormToggle from "@/components/AddFormToggle";
 import Modal, { GoneNotice } from "@/components/Modal";
-import { Participant } from "@/lib/types";
+import { ATTENDANCE_LABELS, type Attendance, type Carpool, type GearItem, type Participant } from "@/lib/types";
+import { attendanceSummary, changeAttendance } from "@/lib/attendance";
 import { formatPhone, normalizePhone, whatsappLink } from "@/lib/phone";
 import { errorMessage } from "@/lib/errors";
 import { EMAIL_HELP, isValidEmail } from "@/lib/email";
@@ -12,9 +13,24 @@ import { EMAIL_HELP, isValidEmail } from "@/lib/email";
 type Role = Participant["role"];
 const ROLES: Role[] = ["Participante", "Guía", "Organizador"];
 
+const ATTENDANCE: Attendance[] = ["Confirmado", "Pendiente", "Cancelado"];
+const ATTENDANCE_ON: Record<Attendance, string> = {
+  Confirmado: "bg-emerald-600 text-white",
+  Pendiente: "bg-amber-600 text-white",
+  Cancelado: "bg-rose-700 text-white",
+};
+const ATTENDANCE_BADGE: Record<Attendance, string> = {
+  Confirmado: "bg-emerald-950/60 text-emerald-300 border-emerald-800",
+  Pendiente: "bg-amber-950/60 text-amber-300 border-amber-800",
+  Cancelado: "bg-rose-950/60 text-rose-300 border-rose-800",
+};
+
 interface ParticipantsSectionProps {
   tripId: string;
   participants: Participant[];
+  // Para avisar qué se libera cuando alguien marca "No voy"
+  gear: GearItem[];
+  carpools: Carpool[];
   // El creador edita y saca a cualquiera (menos su propia tarjeta) y nombra organizadores.
   // Un organizador edita y saca a los demás, pero no a otros organizadores ni al creador.
   // Lo exigen también renombrar_participante y borrar_participante en la base.
@@ -54,6 +70,8 @@ const nameTaken = (participants: Participant[], name: string, exceptId?: string)
 export default function ParticipantsSection({
   tripId,
   participants,
+  gear,
+  carpools,
   isCreator,
   isOrganizer,
   creatorUserId,
@@ -81,6 +99,19 @@ export default function ParticipantsSection({
   const [invite, setInvite] = useState<{ id: string; token: string } | null>(null);
   const [loadingInviteId, setLoadingInviteId] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+
+  // Asistencia: cada uno la suya; el creador y los organizadores, la de todos (lo exige
+  // cambiar_asistencia). En un grupo de solo gastos no se pregunta.
+  const canChangeAttendance = (p: Participant) => isCreator || isOrganizer || p.name === myName;
+  const [savingAttendance, setSavingAttendance] = useState<string | null>(null);
+
+  const handleAttendance = async (p: Participant, status: Attendance) => {
+    if (savingAttendance) return;
+    setSavingAttendance(String(p.id));
+    const saved = await changeAttendance(p, status, gear, carpools, p.name === myName);
+    setSavingAttendance(null);
+    if (saved) onRefresh();
+  };
 
   const canInvite = (p: Participant) => seesAllLinks || (!!userId && p.added_by === userId);
 
@@ -494,6 +525,9 @@ export default function ParticipantsSection({
       )}
 
       {/* Lista de integrantes */}
+      {!expenseGroup && participants.length > 0 && (
+        <p className="text-xs text-slate-400">👥 {attendanceSummary(participants)}</p>
+      )}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
         {participants.length === 0 ? (
           <div className="col-span-full text-center text-xs text-slate-500 py-8 border border-dashed border-slate-800 rounded-xl">
@@ -510,6 +544,11 @@ export default function ParticipantsSection({
                     <span className="text-[10px] bg-slate-800 text-emerald-400 px-1.5 py-0.5 rounded border border-slate-700 shrink-0">
                       {p.role}
                     </span>
+                    {!expenseGroup && !canChangeAttendance(p) && (
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded border shrink-0 ${ATTENDANCE_BADGE[p.status] ?? ""}`}>
+                        {ATTENDANCE_LABELS[p.status] ?? p.status}
+                      </span>
+                    )}
                   </div>
                   {p.email && <div className="text-[11px] text-slate-400 truncate">{p.email}</div>}
                   {p.phone && <div className="text-[11px] text-slate-400">{formatPhone(p.phone)}</div>}
@@ -552,6 +591,28 @@ export default function ParticipantsSection({
                   </div>
                 )}
               </div>
+
+              {!expenseGroup && canChangeAttendance(p) && (
+                <div
+                  className={`grid grid-cols-3 gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800 ${
+                    savingAttendance === String(p.id) ? "opacity-60" : ""
+                  }`}
+                >
+                  {ATTENDANCE.map((s) => (
+                    <button
+                      key={s}
+                      type="button"
+                      disabled={!!savingAttendance}
+                      onClick={() => handleAttendance(p, s)}
+                      className={`px-2 py-1 rounded-md text-[11px] font-medium whitespace-nowrap ${
+                        p.status === s ? ATTENDANCE_ON[s] : "text-slate-400 hover:text-white"
+                      }`}
+                    >
+                      {ATTENDANCE_LABELS[s]}
+                    </button>
+                  ))}
+                </div>
+              )}
 
               {!p.user_id && p.name !== myName && canInvite(p) && invite?.id !== String(p.id) && (
                 <button

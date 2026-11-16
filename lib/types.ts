@@ -34,9 +34,21 @@ export interface Participant {
   // ella, el creador y los organizadores: se pide con la función link_invitacion.
   added_by?: string | null;
   role: "Organizador" | "Guía" | "Participante";
-  status: "Confirmado" | "Pendiente" | "Cancelado";
+  // Asistencia: Voy, Tal vez o No voy (ver ATTENDANCE_LABELS)
+  status: Attendance;
   created_at?: string;
 }
+
+export type Attendance = "Confirmado" | "Pendiente" | "Cancelado";
+
+export const ATTENDANCE_LABELS: Record<Attendance, string> = {
+  Confirmado: "Voy",
+  Pendiente: "Tal vez",
+  Cancelado: "No voy",
+};
+
+// "Tal vez" cuenta como que va; solo "No voy" queda fuera de autos, material y gastos nuevos
+export const isGoing = (p: Pick<Participant, "status">) => p.status !== "Cancelado";
 
 export interface GearItem {
   id: string;

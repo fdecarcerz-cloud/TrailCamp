@@ -5,7 +5,7 @@ import { supabase } from "@/lib/supabase";
 import AddFormToggle from "@/components/AddFormToggle";
 import DeletedWhileEditing from "@/components/DeletedWhileEditing";
 import SuggestGearModal from "@/components/gear/SuggestGearModal";
-import { GearItem, Participant } from "@/lib/types";
+import { GearItem, Participant, isGoing } from "@/lib/types";
 import { errorMessage } from "@/lib/errors";
 
 const PRIORITIES: GearItem["priority"][] = ["Imprescindible", "Importante", "Opcional"];
@@ -42,6 +42,10 @@ export default function GearSection({
   tripEnd,
   onRefresh,
 }: GearSectionProps) {
+  // Quien marcó "No voy" no lleva material (la base tampoco deja asignárselo)
+  const going = participants.filter(isGoing);
+  const iGo = !!myName && going.some((p) => p.name === myName);
+
   const [suggesting, setSuggesting] = useState(false);
   const [name, setName] = useState("");
   const [priority, setPriority] = useState<GearItem["priority"]>("Importante");
@@ -227,7 +231,7 @@ export default function GearSection({
       {suggesting && (
         <SuggestGearModal
           tripId={tripId}
-          people={participants.length}
+          people={going.length}
           startDate={tripStart}
           endDate={tripEnd}
           existing={gear}
@@ -289,7 +293,7 @@ export default function GearSection({
               className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
             >
               <option value="">Nadie todavía</option>
-              {participants.map((p) => (
+              {going.map((p) => (
                 <option key={p.id} value={p.name}>
                   {p.name}
                 </option>
@@ -372,7 +376,7 @@ export default function GearSection({
                         className="w-full bg-slate-950 border border-slate-700 rounded-md px-2 py-1 text-white"
                       >
                         <option value="">Nadie todavía</option>
-                        {participants.map((p) => (
+                        {going.map((p) => (
                           <option key={p.id} value={p.name}>
                             {p.name}
                           </option>
@@ -476,7 +480,7 @@ export default function GearSection({
                           >
                             ⚠️ Nadie lo lleva todavía
                           </span>
-                          {myName && (
+                          {iGo && (
                             <button
                               onClick={() => handleClaim(item, true)}
                               className="text-[10px] font-semibold bg-emerald-600 hover:bg-emerald-500 text-white px-2 py-0.5 rounded-md transition-colors"
